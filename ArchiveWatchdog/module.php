@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3. Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.01 (Build 4). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -357,11 +357,25 @@ class ArchiveWatchdog extends IPSModule
                         $this->SendDebug('Delete', 'Fehler bei ' . $id . ' / ' . $ts . ': ' . $e->getMessage(), 0);
                     }
                 }
-                if ($deleted) {
-                    AC_ReAggregateVariable($archive, $id);
-                }
                 $totalDeleted += $deleted;
                 $lines[] = '  Löschaufrufe erfolgreich: ' . $deleted . ', fehlgeschlagen: ' . $failed . '.';
+                // Nur nach mindestens einem erfolgreichen Löschaufruf reaggregieren.
+                // Die Reaggregation erfolgt einmal pro Variable nach allen Löschungen,
+                // niemals beim Lernen oder bei einer reinen Vorschau.
+                if ($deleted > 0) {
+                    try {
+                        if (AC_ReAggregateVariable($archive, $id)) {
+                            $lines[] = '  Archivaggregation erfolgreich aktualisiert.';
+                            $this->SendDebug('ReAggregate', 'Variable ' . $id . ': erfolgreich nach ' . $deleted . ' Löschaufrufen.', 0);
+                        } else {
+                            $lines[] = '  WARNUNG: Archivaggregation konnte nicht aktualisiert werden!';
+                            $this->SendDebug('ReAggregate', 'Variable ' . $id . ': Rückgabewert false.', 0);
+                        }
+                    } catch (Throwable $e) {
+                        $lines[] = '  WARNUNG: Fehler bei Archivaggregation: ' . $e->getMessage();
+                        $this->SendDebug('ReAggregate', 'Variable ' . $id . ': ' . $e->getMessage(), 0);
+                    }
+                }
             }
         }
         $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', Löschaufrufe erfolgreich: ' . $totalDeleted : '') . '.';

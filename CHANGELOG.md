@@ -1,0 +1,25 @@
+# Changelog
+
+## 0.3.01 · Build 4 (2026-11-20)
+
+### Geändert
+- Reaggregation nach Löschungen explizit abgesichert: genau ein Aufruf pro betroffener Variable nach Abschluss der Löschaufrufe, sofern mindestens einer erfolgreich war.
+- Kein Aufruf der Reaggregation bei Lernlauf, Vorschau oder Löschlauf ohne erfolgreiche Löschung.
+- Erfolgreiche Reaggregation bzw. Fehler werden in Ergebnis und Debug protokolliert.
+- README und Konfigurationsdokumentation ergänzt; Versionsangaben vereinheitlicht.
+
+## 0.3 · Build 3
+
+- Archivprüfung ab konfigurierbarem Startdatum und in Tagesblöcken.
+- Erkennung kurzer Fehlerfolgen zusätzlich zu isolierten Ausreißern.
+- Vorschau und Löschung für Prüfzeitraum oder Archiv ab Startdatum.
+- Schutz vor teilweiser Löschung bei unvollständigen Prüfblöcken.
+
+## 0.2 · Build 2
+
+- Lernprofile aus Archivwerten und unterschiedliche Verlaufstypen hinzugefügt.
+- Einstellbarer Großzügigkeitsfaktor und variableabhängige Prüfgrenzen.
+
+## 0.1 · Build 1
+
+- Grundlegende Archivüberwachung für Messwerte mit konfigurierbaren Sprung- und Nachbartoleranzen.
