@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.2: conservative archival outlier screening; never changes a live variable. */
+/** ArchiveWatchdog v0.3. Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -13,6 +13,8 @@ class ArchiveWatchdog extends IPSModule
         $this->RegisterPropertyInteger('TrainingDays', 14);
         $this->RegisterPropertyFloat('SafetyFactor', 3.0);
         $this->RegisterPropertyString('Targets', '[]');
+        $this->RegisterPropertyString('ArchiveStartDate', '2020-01-01');
+        $this->RegisterPropertyInteger('MaxErrorSeries', 6);
         $this->RegisterAttributeString('LearnedProfiles', '{}');
         $this->RegisterTimer('ScanTimer', 0, 'AWD_AutoScan($_IPS[\'TARGET\']);');
     }
@@ -44,29 +46,29 @@ class ArchiveWatchdog extends IPSModule
 
     private function targets(): array
     {
-        $decoded = json_decode($this->ReadPropertyString('Targets'), true);
-        return is_array($decoded) ? $decoded : [];
+        $value = json_decode($this->ReadPropertyString('Targets'), true);
+        return is_array($value) ? $value : [];
     }
 
     private function profiles(): array
     {
-        $decoded = json_decode($this->ReadAttributeString('LearnedProfiles'), true);
-        return is_array($decoded) ? $decoded : [];
+        $value = json_decode($this->ReadAttributeString('LearnedProfiles'), true);
+        return is_array($value) ? $value : [];
     }
 
     private function percentile(array $sorted, float $p): float
     {
         $n = count($sorted);
-        if (!$n) {
+        if ($n === 0) {
             return 0.0;
         }
         $pos = ($n - 1) * $p;
-        $lo = (int) floor($pos);
-        $hi = min($lo + 1, $n - 1);
-        return (float) ($sorted[$lo] + ($sorted[$hi] - $sorted[$lo]) * ($pos - $lo));
+        $a = (int) floor($pos);
+        $b = min($a + 1, $n - 1);
+        return (float) ($sorted[$a] + ($sorted[$b] - $sorted[$a]) * ($pos - $a));
     }
 
-    /** Learn only on explicit button click. Profiles persist across IP-Symcon restarts. */
+    /** Training is manual and never deletes anything. */
     public function Learn(): string
     {
         $archive = $this->archiveID();
@@ -88,49 +90,57 @@ class ArchiveWatchdog extends IPSModule
             }
             $mode = (int) ($t['Mode'] ?? 0);
             $gap = max(1, (int) ($t['MaxGapMinutes'] ?? 30)) * 60;
-            try {
-                $rows = AC_GetLoggedValues($archive, $id, $start, $end, 10000);
-            } catch (Throwable $e) {
-                $lines[] = $id . ': Archivfehler: ' . $e->getMessage();
-                continue;
-            }
-            // Avoid silently learning on a truncated period.
-            if (count($rows) >= 10000) {
-                $lines[] = $id . ': mehr als 9999 Werte, Lernzeitraum verkleinern.';
-                continue;
-            }
-            usort($rows, static fn($a, $b) => (int)$a['TimeStamp'] <=> (int)$b['TimeStamp']);
             $steps = [];
             $intervals = [];
             $reversals = 0;
             $prev = null;
-            foreach ($rows as $row) {
-                $ts = (int) ($row['TimeStamp'] ?? 0);
-                $v = (float) ($row['Value'] ?? NAN);
-                if (!is_finite($v)) {
-                    continue;
+            $error = '';
+            // Prevent the 10,000-value response cap from silently truncating training.
+            for ($from = $start; $from < $end; $from += 86400) {
+                $to = min($end, $from + 86400);
+                try {
+                    $rows = AC_GetLoggedValues($archive, $id, $from, $to, 10000);
+                } catch (Throwable $e) {
+                    $error = $e->getMessage();
+                    break;
                 }
-                if ($prev !== null) {
-                    $dt = $ts - $prev[0];
-                    if ($dt > 0 && $dt <= $gap) {
-                        $diff = $v - $prev[1];
-                        if (($mode === 1 && $diff < 0) || ($mode === 2 && $diff > 0)) {
-                            $reversals++;
-                        } else {
-                            $steps[] = abs($diff);
-                            $intervals[] = $dt;
+                if (count($rows) >= 10000) {
+                    $error = 'Mindestens 10000 Werte an einem Tag; Lernzeitraum nicht vollständig. Keine Profiländerung.';
+                    break;
+                }
+                usort($rows, static fn($a, $b) => (int) $a['TimeStamp'] <=> (int) $b['TimeStamp']);
+                foreach ($rows as $r) {
+                    $ts = (int) ($r['TimeStamp'] ?? 0);
+                    $v = (float) ($r['Value'] ?? NAN);
+                    if (!is_finite($v) || $ts <= 0 || ($prev !== null && $ts <= $prev[0])) {
+                        continue;
+                    }
+                    if ($prev !== null) {
+                        $dt = $ts - $prev[0];
+                        if ($dt <= $gap) {
+                            $diff = $v - $prev[1];
+                            if (($mode === 1 && $diff < 0) || ($mode === 2 && $diff > 0)) {
+                                $reversals++;
+                            } else {
+                                $steps[] = abs($diff);
+                                $intervals[] = $dt;
+                            }
                         }
                     }
+                    $prev = [$ts, $v];
                 }
-                $prev = [$ts, $v];
+            }
+            if ($error !== '') {
+                $lines[] = IPS_GetName($id) . ': ' . $error;
+                continue;
             }
             if (count($steps) < 30) {
-                $lines[] = $id . ': zu wenig geeignete Werte (' . count($steps) . ' Schritte, min. 30).';
+                $lines[] = IPS_GetName($id) . ': nur ' . count($steps) . ' geeignete Schritte (mindestens 30 erforderlich).';
                 continue;
             }
             sort($steps, SORT_NUMERIC);
             sort($intervals, SORT_NUMERIC);
-            $profile = [
+            $p = [
                 'mode' => $mode,
                 'q95' => $this->percentile($steps, 0.95),
                 'q99' => $this->percentile($steps, 0.99),
@@ -140,10 +150,10 @@ class ArchiveWatchdog extends IPSModule
                 'learnedAt' => time(),
                 'trainingDays' => $days
             ];
-            $profiles[(string)$id] = $profile;
-            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . count($steps) . ' Schritte, 95%-Sprung=' . round($profile['q95'], 4)
-                . ', 99%-Sprung=' . round($profile['q99'], 4) . ', typische Zeit=' . round($profile['medianInterval'])
-                . ' s, Richtungswechsel=' . $reversals . '.';
+            $profiles[(string) $id] = $p;
+            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . count($steps) . ' Schritte, 95%-Sprung=' . round($p['q95'], 3)
+                . ', 99%-Sprung=' . round($p['q99'], 3) . ', typische Zeit=' . round($p['medianInterval'])
+                . 's, Richtungswechsel=' . $reversals . '.';
         }
         $this->WriteAttributeString('LearnedProfiles', json_encode($profiles));
         $report = implode("\n", $lines);
@@ -154,15 +164,98 @@ class ArchiveWatchdog extends IPSModule
     private function threshold(array $target, array $profile, int $dt): float
     {
         $manual = max(0.001, (float) ($target['Spike'] ?? 3));
-        // Robust 95th percentile: avoids letting a few historical faulty spikes inflate the threshold.
         $typical = max(1.0, (float) ($profile['medianInterval'] ?? $dt));
         $scale = min(4.0, max(1.0, sqrt($dt / $typical)));
         $factor = max(1.0, min(20.0, $this->ReadPropertyFloat('SafetyFactor')));
         return max($manual, (float) ($profile['q95'] ?? 0) * $factor * $scale);
     }
 
-    /** Conservative: only an isolated value whose neighbors corroborate a return. */
-    public function Scan(bool $delete = false): string
+    /** Detect a short wrong-valued run surrounded by plausible anchors. */
+    private function detect(array $rows, array $target, array $profile, int $start, int $end): array
+    {
+        $bad = [];
+        $n = count($rows);
+        $maxRun = max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries')));
+        $gap = max(1, (int) ($target['MaxGapMinutes'] ?? 30)) * 60;
+        $tol = max(0.0, (float) ($target['NeighborTolerance'] ?? 1));
+        $mode = (int) ($target['Mode'] ?? 0);
+        for ($i = 1; $i < $n - 1; $i++) {
+            $left = $rows[$i - 1];
+            $aTs = (int) $left['TimeStamp'];
+            $aV = (float) $left['Value'];
+            if (!is_finite($aV)) {
+                continue;
+            }
+            $best = [];
+            // Start with one suspect, extend to a small burst if needed.
+            for ($length = 1; $length <= $maxRun && $i + $length < $n; $length++) {
+                $right = $rows[$i + $length];
+                $zTs = (int) $right['TimeStamp'];
+                $zV = (float) $right['Value'];
+                if (!is_finite($zV) || $zTs <= $aTs) {
+                    break;
+                }
+                $ok = true;
+                for ($j = $i; $j <= $i + $length; $j++) {
+                    $prevTs = (int) $rows[$j - 1]['TimeStamp'];
+                    $currTs = (int) $rows[$j]['TimeStamp'];
+                    if ($currTs <= $prevTs || $currTs - $prevTs > $gap) {
+                        $ok = false;
+                        break;
+                    }
+                }
+                if (!$ok) {
+                    break;
+                }
+                // A genuine counter reset or sustained change has no fast return.
+                // For counter anchors allow normal accumulated progress, not a fixed neighbor tolerance.
+                $anchorLimit = $mode === 0
+                    ? max($tol, (float) ($profile['q95'] ?? 0) * max(1, $length) * 1.5)
+                    : max($tol, $this->threshold($target, $profile, $zTs - $aTs) * ($length + 1));
+                if (abs($zV - $aV) > $anchorLimit) {
+                    continue;
+                }
+                if ($mode === 1 && $zV + $tol < $aV) {
+                    continue;
+                }
+                if ($mode === 2 && $zV - $tol > $aV) {
+                    continue;
+                }
+                $candidate = [];
+                for ($j = $i; $j < $i + $length; $j++) {
+                    $ts = (int) $rows[$j]['TimeStamp'];
+                    $v = (float) $rows[$j]['Value'];
+                    if (!is_finite($v) || $ts < $start || $ts > $end) {
+                        $candidate = [];
+                        break;
+                    }
+                    $expected = $aV + ($zV - $aV) * ($ts - $aTs) / ($zTs - $aTs);
+                    $threshold = $this->threshold($target, $profile, min($ts - $aTs, $zTs - $ts));
+                    if (abs($v - $expected) <= $threshold ||
+                        ($mode === 1 && $v >= min($aV, $zV) && $v <= max($aV, $zV)) ||
+                        ($mode === 2 && $v >= min($aV, $zV) && $v <= max($aV, $zV))) {
+                        $candidate = [];
+                        break;
+                    }
+                    $candidate[] = ['TimeStamp' => $ts, 'Value' => $v, 'Expected' => $expected, 'Threshold' => $threshold];
+                }
+                if ($candidate) {
+                    $best = $candidate;
+                    break; // shortest conclusive burst, avoids swallowing good readings
+                }
+            }
+            if ($best) {
+                foreach ($best as $item) {
+                    $bad[(string) $item['TimeStamp']] = $item;
+                }
+                $i += count($best) - 1;
+            }
+        }
+        return $bad;
+    }
+
+    /** Scan normal range; or entire archive since configured ArchiveStartDate (in daily chunks). */
+    public function Scan(bool $delete = false, bool $wholeArchive = false): string
     {
         $archive = $this->archiveID();
         if (!$archive) {
@@ -170,9 +263,23 @@ class ArchiveWatchdog extends IPSModule
         }
         $profiles = $this->profiles();
         $end = time() - max(1, $this->ReadPropertyInteger('MinAgeMinutes')) * 60;
-        $start = $end - max(1, $this->ReadPropertyInteger('LookbackHours')) * 3600;
-        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? 'LÖSCHMODUS' : 'VORSCHAU') . ')'];
-        $total = 0;
+        if ($wholeArchive) {
+            $date = $this->ReadPropertyString('ArchiveStartDate');
+            $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+            if (!$dt || $dt->format('Y-m-d') !== $date) {
+                return 'Ungültiges Archiv-Startdatum. Bitte JJJJ-MM-TT eingeben.';
+            }
+            $start = $dt->getTimestamp();
+        } else {
+            $start = $end - max(1, $this->ReadPropertyInteger('LookbackHours')) * 3600;
+        }
+        if ($start >= $end) {
+            return 'Startdatum liegt nach dem Prüfende.';
+        }
+        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? 'LÖSCHMODUS' : 'VORSCHAU') . ')',
+            'Prüfbereich: ' . date('d.m.Y H:i', $start) . ' bis ' . date('d.m.Y H:i', $end) . '.'];
+        $totalFound = 0;
+        $totalDeleted = 0;
         foreach ($this->targets() as $t) {
             if (isset($t['Enabled']) && !$t['Enabled']) {
                 continue;
@@ -185,80 +292,80 @@ class ArchiveWatchdog extends IPSModule
             if ($type !== 1 && $type !== 2) {
                 continue;
             }
-            $mode = (int) ($t['Mode'] ?? 0);
-            $profile = $profiles[(string)$id] ?? [];
-            if (!$profile || (int) ($profile['mode'] ?? -1) !== $mode) {
-                $lines[] = IPS_GetName($id) . ': noch kein passendes Lernprofil – übersprungen (zuerst Lernen ausführen).';
+            $profile = $profiles[(string) $id] ?? [];
+            if (!$profile || (int) ($profile['mode'] ?? -1) !== (int) ($t['Mode'] ?? 0)) {
+                $lines[] = IPS_GetName($id) . ': kein passendes Lernprofil – übersprungen.';
                 continue;
             }
             $gap = max(1, (int) ($t['MaxGapMinutes'] ?? 30)) * 60;
-            $tolerance = max(0.0, (float) ($t['NeighborTolerance'] ?? 1));
-            try {
-                $rows = AC_GetLoggedValues($archive, $id, $start - $gap, $end + $gap, 10000);
-            } catch (Throwable $e) {
-                $lines[] = $id . ': Archivfehler: ' . $e->getMessage();
-                continue;
-            }
-            if (count($rows) >= 10000) {
-                $lines[] = $id . ': zu viele Archivwerte, Suchfenster verkleinern.';
-                continue;
-            }
-            usort($rows, static fn($a, $b) => (int)$a['TimeStamp'] <=> (int)$b['TimeStamp']);
+            $overlap = $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2);
             $bad = [];
-            for ($i = 1, $n = count($rows) - 1; $i < $n; $i++) {
-                $a = $rows[$i - 1];
-                $b = $rows[$i];
-                $c = $rows[$i + 1];
-                $ts = (int)$b['TimeStamp'];
-                $d1 = $ts - (int)$a['TimeStamp'];
-                $d2 = (int)$c['TimeStamp'] - $ts;
-                if ($ts < $start || $ts > $end || $d1 <= 0 || $d2 <= 0 || $d1 > $gap || $d2 > $gap) {
-                    continue;
+            $incomplete = false;
+            $note = '';
+            for ($from = $start; $from < $end; $from += 86400) {
+                $to = min($end, $from + 86400);
+                try {
+                    $rows = AC_GetLoggedValues($archive, $id, max(0, $from - $overlap), $to + $overlap, 10000);
+                } catch (Throwable $e) {
+                    $incomplete = true;
+                    $note = 'Archivfehler: ' . $e->getMessage();
+                    break;
                 }
-                $v1 = (float)$a['Value'];
-                $v2 = (float)$b['Value'];
-                $v3 = (float)$c['Value'];
-                if (!is_finite($v1) || !is_finite($v2) || !is_finite($v3)) {
-                    continue;
+                if (count($rows) >= 10000) {
+                    $incomplete = true;
+                    $note = 'Mindestens 10000 Datenpunkte in einem Prüfblock (keine vollständige Analyse).';
+                    break;
                 }
-                // The two surrounding values must be close, otherwise this may be a real trend or reset.
-                $neighborAllowed = max($tolerance, $this->threshold($t, $profile, $d1 + $d2));
-                if (abs($v3 - $v1) > $neighborAllowed) {
-                    continue;
+                usort($rows, static fn($a, $b) => (int) $a['TimeStamp'] <=> (int) $b['TimeStamp']);
+                $detected = $this->detect($rows, $t, $profile, $from, $to);
+                foreach ($detected as $key => $item) {
+                    $bad[$key] = $item;
                 }
-                $limit = max($this->threshold($t, $profile, $d1), $this->threshold($t, $profile, $d2));
-                $expected = $v1 + ($v3 - $v1) * $d1 / ($d1 + $d2);
-                if (abs($v2 - $expected) <= $limit || abs($v2 - $v1) <= $limit || abs($v2 - $v3) <= $limit) {
-                    continue;
-                }
-                // Counter: only delete clear temporary backwards/forwards excursions that immediately recover.
-                if ($mode === 1 && !($v2 < min($v1, $v3) || $v2 > max($v1, $v3))) {
-                    continue;
-                }
-                if ($mode === 2 && !($v2 > max($v1, $v3) || $v2 < min($v1, $v3))) {
-                    continue;
-                }
-                $bad[] = ['TimeStamp' => $ts, 'Value' => $v2, 'Expected' => $expected, 'Threshold' => $limit];
             }
-            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . count($bad) . ' eindeutige Einzel-Ausreißer.';
+            // Fail closed: no partial delete if ANY data block was incomplete.
+            if ($incomplete) {
+                $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $note . ' Keine Löschung.';
+                continue;
+            }
+            ksort($bad, SORT_NUMERIC);
+            $count = count($bad);
+            $totalFound += $count;
+            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (auch kurze Fehlerfolgen).';
+            $shown = 0;
             foreach ($bad as $item) {
+                if ($shown++ >= 20) {
+                    $lines[] = '  ... weitere ' . ($count - 20) . ' Werte (Details im Debug).';
+                    break;
+                }
                 $lines[] = '  ' . date('d.m.Y H:i:s', $item['TimeStamp']) . ': ' . $item['Value']
                     . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')';
             }
             if ($delete && $bad) {
-                $removed = 0;
+                $deleted = 0;
+                $failed = 0;
                 foreach ($bad as $item) {
                     $ts = $item['TimeStamp'];
-                    $removed += (int) AC_DeleteVariableData($archive, $id, $ts, $ts);
+                    try {
+                        // AC_DeleteVariableData returns bool; do not cast it into a count of archive points.
+                        if (AC_DeleteVariableData($archive, $id, $ts, $ts)) {
+                            $deleted++;
+                        } else {
+                            $failed++;
+                        }
+                    } catch (Throwable $e) {
+                        $failed++;
+                        $this->SendDebug('Delete', 'Fehler bei ' . $id . ' / ' . $ts . ': ' . $e->getMessage(), 0);
+                    }
                 }
-                if ($removed > 0) {
+                if ($deleted) {
                     AC_ReAggregateVariable($archive, $id);
                 }
-                $lines[] = '  Entfernte Archivdatensätze: ' . $removed;
+                $totalDeleted += $deleted;
+                $lines[] = '  Löschaufrufe erfolgreich: ' . $deleted . ', fehlgeschlagen: ' . $failed . '.';
             }
-            $total += count($bad);
         }
-        $lines[] = 'Gesamt: ' . $total . '. Anhaltende Sprünge/Resets werden absichtlich nicht automatisch gelöscht.';
+        $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', Löschaufrufe erfolgreich: ' . $totalDeleted : '') . '.';
+        $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt.';
         $report = implode("\n", $lines);
         $this->SendDebug('Scan', $report, 0);
         return $report;

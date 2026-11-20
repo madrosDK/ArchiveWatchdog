@@ -1,13 +1,15 @@
 {
   "elements": [
-    {"type":"Label","caption":"Lernt typische Archiv-Sprünge je Variable. Löscht nur eindeutig isolierte Fehlmessungen; dauerhafte Zählersprünge und Resets bleiben zur Sicherheit erhalten."},
+    {"type":"Label","caption":"v0.3: Prüfung in Tagesblöcken; erkennt isolierte Ausreißer und kurze Fehlerfolgen. Dauerhafte Resets bleiben unangetastet. Zuerst Vorschau und Archiv-Sicherung durchführen."},
     {"type":"CheckBox","name":"Enabled","caption":"Regelmäßig prüfen"},
-    {"type":"CheckBox","name":"AutoDelete","caption":"Automatische Archivlöschung aktivieren (standardmäßig AUS)"},
+    {"type":"CheckBox","name":"AutoDelete","caption":"Automatische Löschung bei regelmäßiger Prüfung (standardmäßig AUS)"},
     {"type":"NumberSpinner","name":"IntervalMinutes","caption":"Prüfintervall (Minuten)","minimum":1},
-    {"type":"NumberSpinner","name":"LookbackHours","caption":"Prüfzeitraum (Stunden)","minimum":1},
+    {"type":"NumberSpinner","name":"LookbackHours","caption":"Normaler Prüfzeitraum (Stunden)","minimum":1},
     {"type":"NumberSpinner","name":"MinAgeMinutes","caption":"Neueste Daten auslassen (Minuten)","minimum":1},
     {"type":"NumberSpinner","name":"TrainingDays","caption":"Lernzeitraum (Tage)","minimum":1,"maximum":365},
-    {"type":"NumberSpinner","name":"SafetyFactor","caption":"Großzügigkeitsfaktor für gelernte Sprünge (z. B. 3,0)","minimum":1,"maximum":20,"digits":2},
+    {"type":"NumberSpinner","name":"SafetyFactor","caption":"Großzügigkeitsfaktor (gelernter 95%-Sprung × Faktor, mindestens Min. Sprung)","minimum":1,"maximum":20,"digits":2},
+    {"type":"NumberSpinner","name":"MaxErrorSeries","caption":"Maximale Länge kurzer Fehlerfolgen (Messpunkte)","minimum":1,"maximum":20},
+    {"type":"ValidationTextBox","name":"ArchiveStartDate","caption":"Archiv ab Datum prüfen/löschen (JJJJ-MM-TT)"},
     {"type":"List","name":"Targets","caption":"Überwachte Archivvariablen","rowCount":8,"add":true,"delete":true,"columns":[
       {"name":"VariableID","caption":"Variable","width":"200px","add":0,"edit":{"type":"SelectVariable"}},
       {"name":"Mode","caption":"Verlauf","width":"150px","add":0,"edit":{"type":"Select","options":[
@@ -22,9 +24,11 @@
     ]}
   ],
   "actions": [
-    {"type":"Button","caption":"Aus Archiv lernen (keine Änderung an Daten)","onClick":"echo AWD_Learn($id);"},
-    {"type":"Button","caption":"Jetzt prüfen (Vorschau)","onClick":"echo AWD_Scan($id, false);"},
-    {"type":"Button","caption":"Gefundene Einzel-Ausreißer löschen","confirm":"Eindeutige Einzel-Ausreißer aus dem Archiv löschen? Vorher eine Sicherung erstellen!","onClick":"echo AWD_Scan($id, true);"},
-    {"type":"Label","caption":"Wichtig: Nach Änderungen an Variablenart oder Lernzeitraum Lernlauf erneut ausführen. Erkennung längerer Fehlphasen und dauerhafter falscher Zählersprünge folgt erst in einer späteren Version. Keine Live-Wert-Sperre."}
+    {"type":"Button","caption":"Aus Archiv lernen (nur Statistik)","onClick":"echo AWD_Learn($id);"},
+    {"type":"Button","caption":"Prüfzeitraum prüfen (Vorschau)","onClick":"echo AWD_Scan($id, false, false);"},
+    {"type":"Button","caption":"Gesamtes Archiv ab Startdatum prüfen (Vorschau)","onClick":"echo AWD_Scan($id, false, true);"},
+    {"type":"Button","caption":"Alle erkannten Ausreißer im Prüfzeitraum löschen","confirm":"WIRKLICH alle erkannten Ausreißer des Prüfzeitraums unwiderruflich aus den Archiven der aktiven Variablen löschen? Archiv vorher sichern!","onClick":"echo AWD_Scan($id, true, false);"},
+    {"type":"Button","caption":"Alle erkannten Ausreißer ab Archiv-Startdatum löschen","confirm":"ACHTUNG: ALLE erkannten Ausreißer seit dem eingestellten Startdatum aus den Archiven ALLER aktiven Variablen löschen? Vorher vollständige Sicherung anlegen!","onClick":"echo AWD_Scan($id, true, true);"},
+    {"type":"Label","caption":"Die Löschfunktion entfernt nur eindeutig erkannte Ausreißer, nicht alle Messwerte. Änderungen an Parametern erst Übernehmen, dann erneut lernen und in der Vorschau prüfen. Langfristige falsche Sprünge/Resets werden nicht automatisch entfernt."}
   ]
 }
