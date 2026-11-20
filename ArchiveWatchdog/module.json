@@ -1,0 +1,11 @@
+{
+  "id": "{ACB2F875-76D4-4F83-835C-E241A38F2492}",
+  "name": "ArchiveWatchdog",
+  "type": 3,
+  "vendor": "",
+  "aliases": ["Archiv-Ausreißer-Wächter"],
+  "parentRequirements": [],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "AWD"
+}

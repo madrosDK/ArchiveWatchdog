@@ -1,0 +1,30 @@
+{
+  "elements": [
+    {"type":"Label","caption":"Lernt typische Archiv-Sprünge je Variable. Löscht nur eindeutig isolierte Fehlmessungen; dauerhafte Zählersprünge und Resets bleiben zur Sicherheit erhalten."},
+    {"type":"CheckBox","name":"Enabled","caption":"Regelmäßig prüfen"},
+    {"type":"CheckBox","name":"AutoDelete","caption":"Automatische Archivlöschung aktivieren (standardmäßig AUS)"},
+    {"type":"NumberSpinner","name":"IntervalMinutes","caption":"Prüfintervall (Minuten)","minimum":1},
+    {"type":"NumberSpinner","name":"LookbackHours","caption":"Prüfzeitraum (Stunden)","minimum":1},
+    {"type":"NumberSpinner","name":"MinAgeMinutes","caption":"Neueste Daten auslassen (Minuten)","minimum":1},
+    {"type":"NumberSpinner","name":"TrainingDays","caption":"Lernzeitraum (Tage)","minimum":1,"maximum":365},
+    {"type":"NumberSpinner","name":"SafetyFactor","caption":"Großzügigkeitsfaktor für gelernte Sprünge (z. B. 3,0)","minimum":1,"maximum":20,"digits":2},
+    {"type":"List","name":"Targets","caption":"Überwachte Archivvariablen","rowCount":8,"add":true,"delete":true,"columns":[
+      {"name":"VariableID","caption":"Variable","width":"200px","add":0,"edit":{"type":"SelectVariable"}},
+      {"name":"Mode","caption":"Verlauf","width":"150px","add":0,"edit":{"type":"Select","options":[
+        {"caption":"Messwert","value":0},
+        {"caption":"Zähler aufwärts","value":1},
+        {"caption":"Zähler abwärts","value":2}
+      ]}},
+      {"name":"Spike","caption":"Min. Sprung","width":"110px","add":3,"edit":{"type":"NumberSpinner","digits":3}},
+      {"name":"NeighborTolerance","caption":"Nachbar-Toleranz","width":"130px","add":1,"edit":{"type":"NumberSpinner","digits":3}},
+      {"name":"MaxGapMinutes","caption":"Max. Abstand (min)","width":"120px","add":30,"edit":{"type":"NumberSpinner"}},
+      {"name":"Enabled","caption":"Aktiv","width":"80px","add":true,"edit":{"type":"CheckBox"}}
+    ]}
+  ],
+  "actions": [
+    {"type":"Button","caption":"Aus Archiv lernen (keine Änderung an Daten)","onClick":"echo AWD_Learn($id);"},
+    {"type":"Button","caption":"Jetzt prüfen (Vorschau)","onClick":"echo AWD_Scan($id, false);"},
+    {"type":"Button","caption":"Gefundene Einzel-Ausreißer löschen","confirm":"Eindeutige Einzel-Ausreißer aus dem Archiv löschen? Vorher eine Sicherung erstellen!","onClick":"echo AWD_Scan($id, true);"},
+    {"type":"Label","caption":"Wichtig: Nach Änderungen an Variablenart oder Lernzeitraum Lernlauf erneut ausführen. Erkennung längerer Fehlphasen und dauerhafter falscher Zählersprünge folgt erst in einer späteren Version. Keine Live-Wert-Sperre."}
+  ]
+}
