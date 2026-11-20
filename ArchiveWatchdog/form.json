@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.07 (Build 10): bestätigte vollständige Bereinigung inklusive markierter Datenlücken; Vorschau/Tabelle und sichere Automatik bleiben erhalten."
+      "caption": "v0.3.08 (Build 11): bestätigte vollständige Bereinigung inklusive markierter Datenlücken; Vorschau/Tabelle und sichere Automatik bleiben erhalten."
     },
     {
       "type": "CheckBox",
@@ -212,24 +212,24 @@
     {
       "type": "Button",
       "caption": "Prüfzeitraum prüfen (Vorschau)",
-      "onClick": "echo AWD_Scan($id, false, false);"
+      "onClick": "echo AWD_Scan($id, false, false, false);"
     },
     {
       "type": "Button",
       "caption": "Gesamtes Archiv ab Startdatum prüfen (Vorschau)",
-      "onClick": "echo AWD_Scan($id, false, true);"
+      "onClick": "echo AWD_Scan($id, false, true, false);"
     },
     {
       "type": "Button",
       "caption": "Sichere Bereinigung: Prüfzeitraum (große Datenlücken auslassen)",
       "confirm": "WIRKLICH alle erkannten Ausreißer des Prüfzeitraums unwiderruflich aus den Archiven der aktiven Variablen löschen? Archiv vorher sichern!",
-      "onClick": "echo AWD_Scan($id, true, false);"
+      "onClick": "echo AWD_Scan($id, true, false, false);"
     },
     {
       "type": "Button",
       "caption": "Sichere Bereinigung: Archiv ab Startdatum (große Datenlücken auslassen)",
       "confirm": "ACHTUNG: ALLE erkannten Ausreißer seit dem eingestellten Startdatum aus den Archiven ALLER aktiven Variablen löschen? Vorher vollständige Sicherung anlegen!",
-      "onClick": "echo AWD_Scan($id, true, true);"
+      "onClick": "echo AWD_Scan($id, true, true, false);"
     },
     {
       "type": "Button",

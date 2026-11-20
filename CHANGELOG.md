@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.08 · Build 11 (2026-11-20)
+
+### Fehlerbehebung
+- `ArgumentCountError` beim Start der Vorschau und sicheren Archivbereinigung korrigiert: alle sechs Form-Aktionen übergeben an den generierten IP-Symcon-Wrapper `AWD_Scan` jetzt explizit vier Argumente (Instanz-ID und drei Methodenparameter).
+- `includeReview=false` bei Vorschau und sicherer Bereinigung; `includeReview=true` nur bei ausdrücklich bestätigter vollständiger Bereinigung. Keine Änderung an Erkennung, Löschlogik oder Reaggregation.
+- README-Buildangabe der Vorversion korrigiert und Versionsinformationen synchronisiert.
+
 ## 0.3.07 · Build 10 (2026-11-20)
 
 ### Neu

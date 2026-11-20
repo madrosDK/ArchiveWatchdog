@@ -2,7 +2,7 @@
 
 IP-Symcon-Modul zur Prüfung und gezielten Bereinigung auffälliger Archivwerte von Integer- und Float-Variablen. Unterstützt Messwerte, aufwärtszählende und abwärtszählende Zähler sowie das Erkennen kurzer Fehlerfolgen.
 
-**Version:** 0.3.07 · **Build:** 9
+**Version:** 0.3.08 · **Build:** 11
 
 ## Installation
 
@@ -66,3 +66,7 @@ Für aktive Variablen stehen **zwei Löscharten** bereit:
 **Vorher unbedingt eine vollständige Archiv-Sicherung erstellen und die Vorschau sowie die Ergebnistabelle prüfen.** Bei langen Datenlücken sind Fehleinstufungen möglich. Die Freigabe gilt ausschließlich für den einzeln gestarteten und bestätigten Löschlauf, nicht für den automatischen Timer. Der Timer kann diese Sicherheitsgrenze niemals durch eine vorherige Freigabe aufheben. Das Datum „Archiv ab Datum“ bestimmt den Umfang eines Archiv-Gesamtlaufs und ist vor dem Start zu kontrollieren.
 
 Die Tabelle „Letztes Prüfergebnis / Diagnose“ führt erkannte Kandidaten und ihre Statusmeldungen (maximal 300 Einträge). Der Bericht nennt die Gesamtzahl, zurückgehaltene Kandidaten und tatsächlich gelöschte Datensätze. Die Funktion `AC_ReAggregateVariable` meldet die Anforderung der Neuberechnung, nicht deren Abschluss.
+
+## Korrektur in v0.3.08
+
+Alle sechs Schaltflächen für Archivvorschau und Archivbereinigung übergeben die drei Methodenargumente `delete`, `wholeArchive` und `includeReview` jetzt ausdrücklich. Die von IP-Symcon generierte globale Wrapperfunktion `AWD_Scan()` verlangt vier Argumente einschließlich Instanz-ID, auch wenn die Modul-Methode Standardwerte besitzt. Die Korrektur verhindert den `ArgumentCountError` bei den bisherigen Drei-Argument-Aufrufen. Vorschau und sichere Löschung verwenden für `includeReview` ausdrücklich `false`; die bestätigte vollständige Bereinigung verwendet `true`. Archivdaten werden durch diesen Versionswechsel nicht verändert.

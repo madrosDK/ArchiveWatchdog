@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.07 (Build 10). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.08 (Build 11). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()

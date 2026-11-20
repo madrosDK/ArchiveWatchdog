@@ -1,6 +1,6 @@
 # ArchiveWatchdog – Konfiguration
 
-Version 0.3.07 · Build 10
+Version 0.3.08 · Build 11
 
 ## Allgemeine Einstellungen
 
@@ -103,3 +103,7 @@ Die Einstellung **Manuelle Freigabe: Uhrzeit HH:MM:SS** bezeichnet exakt einen b
 **Vorgeschlagener Ablauf:** Archiv sichern → Zeitraum kontrollieren → passende Vorschau starten → Tabelle mit maximal 300 Einträgen und vollständige Gesamtzahlen prüfen → bestätigte vollständige Bereinigung starten → im Abschlussbericht die Anzahl tatsächlich gelöschter Datensätze kontrollieren → Abschluss der Reaggregation im IP-Symcon-Meldungsfenster prüfen und Diagramm neu laden. Eine 0 in der Löschstatistik bedeutet, dass kein Archivwert entfernt wurde.
 
 **Risiko:** Bei großen Datenlücken kann ein erkannter Kandidat ein echter Messwert sein. Die Bestätigung hebt nur die Sperre für große Lücken auf und löscht weiterhin ausschließlich erkannte Kandidaten; sie garantiert keine fehlerfreie Klassifizierung. Dauerhafte Zähler-Resets und nicht erkannte Fehler werden nicht automatisch korrigiert. Reaggregation findet ausschließlich nach einem positiven Lösch-Rückgabewert einmal je betroffener Variable statt.
+
+## Fehlerkorrektur in v0.3.08
+
+Bei allen sechs Archivscan-Aktionen werden Instanz-ID und die drei Parameter der Methode `Scan` explizit übergeben, damit der von IP-Symcon generierte globale `AWD_Scan`-Wrapper nicht mit `ArgumentCountError` abbricht. Die automatischen Timer und die Lösch-/Reaggregationsregeln bleiben unverändert.
