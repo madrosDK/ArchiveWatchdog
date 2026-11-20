@@ -1,6 +1,6 @@
 # ArchiveWatchdog – Konfiguration
 
-Version 0.3.02 · Build 5
+Version 0.3.03 · Build 6
 
 ## Allgemeine Einstellungen
 
@@ -51,3 +51,15 @@ Die Reaggregation wird **nicht für jeden einzelnen Messpunkt**, sondern nach s�
 - `Reaggregation ANGEFORDERT` bedeutet, dass Symcon die Neuberechnung gestartet hat; der Abschluss kann dauern und ist im Meldungsfenster des Archive Control zu kontrollieren.
 - Erst nach Abschluss das Diagramm neu laden. Bestehen Ausreißer weiterhin in den Rohdaten, muss die Erkennung/Löschung untersucht werden, nicht nur reaggregiert werden.
 - Bei **Vorschau** und **Lernlauf** werden weder Daten gelöscht noch Reaggregationen gestartet.
+
+## Diagnose (v0.3.03)
+
+| Einstellung / Schaltfläche | Bedeutung |
+| --- | --- |
+| Diagnose: Variable | Variablen-ID, deren Rohwerte einzeln untersucht werden sollen; unabhängig von Aktiv-Status der Überwachung. |
+| Diagnose: Datum | Tag im Format `JJJJ-MM-TT` (lokale Zeitzone des IP-Symcon-Servers). |
+| Einzeltag-Diagnose | Liest Rohwerte dieses Tages inklusive zeitlicher Nachbarwerte, untersucht auffällige Werte und erklärt Bedingungen, die ihre Erkennung verhindern. Kein Schreibzugriff. |
+| Letztes Prüfergebnis / Diagnose | Persistenter Bericht der zuletzt ausgeführten Diagnose oder Archivprüfung. |
+| Erkannte und untersuchte Archivwerte | Bis zu 300 Rohwerte mit Zeitstempel, Wert, optionalen Nachbarwerten und Status (z. B. erkannt, nicht gelöscht, gelöscht, noch vorhanden). Wird bei nächster Prüfung ersetzt. |
+
+Änderungen in den Einstellungen vor dem Auslösen über **Übernehmen** speichern. Zur Untersuchung des bekannten Beispielwerts die Variable `38701` und den Tag `2026-11-16` wählen. Bei größerem Prüfzeitraum bleiben die bisherigen Aktionsknöpfe erhalten. Eine Reaggregation erfolgt **ausschließlich**, wenn ein Löschlauf mindestens einen Datensatz tatsächlich gelöscht hat; nicht bei Lernen, Vorschau oder Diagnose.

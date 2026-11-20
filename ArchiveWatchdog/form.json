@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.02 (Build 5): Gelöschte Datensätze werden gezählt; Rohdaten-Löschung geprüft; Reaggregation nur nach tatsächlicher Löschung gestartet."
+      "caption": "v0.3.03 (Build 6): Tagesdiagnose, dauerhafter Ergebnisbericht und Löschstatus je erkanntem Rohwert."
     },
     {
       "type": "CheckBox",
@@ -138,9 +138,24 @@
           }
         }
       ]
+    },
+    {
+      "type": "SelectVariable",
+      "name": "DiagnosticVariableID",
+      "caption": "Diagnose: Variable (z. B. 38701)"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "DiagnosticDate",
+      "caption": "Diagnose: Datum (JJJJ-MM-TT)"
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "Einzeltag-Diagnose (nur prüfen, keine Löschung)",
+      "onClick": "echo AWD_DiagnoseDay($id);"
+    },
     {
       "type": "Button",
       "caption": "Aus Archiv lernen (nur Statistik)",

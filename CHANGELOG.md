@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.03 · Build 6 (2026-11-20)
+
+### Ergänzt
+- Einzeltag-Diagnose für frei wählbare Archivvariable und Datum: Ausreißer, Nachbarwerte und Gründe für Nicht-Erkennung. Ohne Löschung/Reaggregation.
+- Persistenter letzter Prüfbericht und Diagnosetabelle mit bis zu 300 konkreten Archivwerten und Löschstatus.
+- Erfolgreiche Löschungen und fehlgeschlagene Löschversuche werden in der Diagnosetabelle unterschieden.
+- Vorhandene Erkennungs-, Lern- und Löschfunktion sowie das Reaggregationsverhalten bleiben erhalten.
+
+
 ## 0.3.02 · Build 5 (2026-11-20)
 
 ### Korrigiert

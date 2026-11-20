@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.02 (Build 5). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.03 (Build 6). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -16,6 +16,10 @@ class ArchiveWatchdog extends IPSModule
         $this->RegisterPropertyString('ArchiveStartDate', '2020-01-01');
         $this->RegisterPropertyInteger('MaxErrorSeries', 6);
         $this->RegisterAttributeString('LearnedProfiles', '{}');
+        $this->RegisterAttributeString('LastReport', 'Noch keine Prüfung durchgeführt.');
+        $this->RegisterAttributeString('DiagnosisRows', '[]');
+        $this->RegisterPropertyInteger('DiagnosticVariableID', 0);
+        $this->RegisterPropertyString('DiagnosticDate', '2026-11-16');
         $this->RegisterTimer('ScanTimer', 0, 'AWD_AutoScan($_IPS[\'TARGET\']);');
     }
 
@@ -28,7 +32,26 @@ class ArchiveWatchdog extends IPSModule
 
     public function GetConfigurationForm()
     {
-        return file_get_contents(__DIR__ . '/form.json');
+        $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+        $form['actions'][] = [
+            'type' => 'ExpansionPanel', 'caption' => 'Letztes Prüfergebnis / Diagnose',
+            'items' => [
+                ['type' => 'Label', 'caption' => $this->ReadAttributeString('LastReport')],
+                [
+                    'type' => 'List', 'caption' => 'Erkannte und untersuchte Archivwerte (max. 300)',
+                    'add' => false, 'delete' => false, 'rowCount' => 12,
+                    'values' => json_decode($this->ReadAttributeString('DiagnosisRows'), true) ?: [],
+                    'columns' => [
+                        ['name' => 'Date', 'caption' => 'Zeitpunkt', 'width' => '155px'],
+                        ['name' => 'Variable', 'caption' => 'Variable', 'width' => '135px'],
+                        ['name' => 'Value', 'caption' => 'Wert', 'width' => '85px'],
+                        ['name' => 'Neighbors', 'caption' => 'Vorher / Nachher', 'width' => '155px'],
+                        ['name' => 'Status', 'caption' => 'Erkennung / Löschung', 'width' => '200px']
+                    ]
+                ]
+            ]
+        ];
+        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     public function AutoScan()
@@ -66,6 +89,111 @@ class ArchiveWatchdog extends IPSModule
         $a = (int) floor($pos);
         $b = min($a + 1, $n - 1);
         return (float) ($sorted[$a] + ($sorted[$b] - $sorted[$a]) * ($pos - $a));
+    }
+
+    private function saveReport(string $report, array $rows): void
+    {
+        $this->WriteAttributeString('LastReport', $report);
+        $this->WriteAttributeString('DiagnosisRows', json_encode(array_slice($rows, 0, 300), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+        $this->SendDebug('Diagnosis', $report, 0);
+    }
+
+    private function detailRow(int $id, array $item, string $status, string $neighbors = ''): array
+    {
+        return [
+            'Date' => date('d.m.Y H:i:s', (int) $item['TimeStamp']),
+            'Variable' => IPS_GetName($id) . ' (' . $id . ')',
+            'Value' => (string) $item['Value'],
+            'Neighbors' => $neighbors,
+            'Status' => $status
+        ];
+    }
+
+    /** Focused raw-data check, independently of the trained detection result. Never deletes. */
+    public function DiagnoseDay(): string
+    {
+        $id = $this->ReadPropertyInteger('DiagnosticVariableID');
+        $date = $this->ReadPropertyString('DiagnosticDate');
+        $archive = $this->archiveID();
+        if (!$archive || $id <= 0 || !IPS_VariableExists($id)) {
+            return 'Diagnose: Bitte eine gültige Variable wählen und ein Archiv bereitstellen.';
+        }
+        $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if (!$dt || $dt->format('Y-m-d') !== $date) {
+            return 'Diagnose: Datum muss JJJJ-MM-TT sein.';
+        }
+        $target = null;
+        foreach ($this->targets() as $t) {
+            if ((int) ($t['VariableID'] ?? 0) === $id) { $target = $t; break; }
+        }
+        $start = $dt->getTimestamp();
+        $end = $start + 86399;
+        $lines = ['Einzeltag-Diagnose ' . $date . ': ' . IPS_GetName($id) . ' (' . $id . ')',
+            'Nur Rohdatenanalyse, keine Löschung, keine Reaggregation.'];
+        if ($target === null) {
+            $lines[] = 'WARNUNG: Variable ist nicht in den überwachten Variablen konfiguriert.';
+            $target = ['Mode' => 0, 'Spike' => 3, 'NeighborTolerance' => 1, 'MaxGapMinutes' => 30];
+        } elseif (isset($target['Enabled']) && !$target['Enabled']) {
+            $lines[] = 'HINWEIS: Variable ist in der Überwachung deaktiviert.';
+        }
+        $profile = $this->profiles()[(string) $id] ?? [];
+        $mode = (int) ($target['Mode'] ?? 0);
+        if (!$profile) { $lines[] = 'WARNUNG: Kein Lernprofil, es gelten nur manuelle Grenzwerte.'; }
+        elseif ((int) ($profile['mode'] ?? -1) !== $mode) {
+            $lines[] = 'WARNUNG: Lernprofil für anderen Verlaufstyp. Bitte neu lernen.';
+            $profile = [];
+        }
+        $gap = max(1, (int) ($target['MaxGapMinutes'] ?? 30)) * 60;
+        $pad = max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
+        try {
+            $rows = AC_GetLoggedValues($archive, $id, max(1, $start - $pad), $end + $pad, 10000);
+        } catch (Throwable $e) {
+            return 'Archiv-Abfrage fehlgeschlagen: ' . $e->getMessage();
+        }
+        if (count($rows) >= 10000) { return 'Diagnose abgebrochen: Mehr als 9999 Werte im Abfragefenster. Kein vollständiger Datensatz.'; }
+        usort($rows, static fn($a, $b) => (int) $a['TimeStamp'] <=> (int) $b['TimeStamp']);
+        $detected = $this->detect($rows, $target, $profile, $start, $end);
+        $lines[] = 'Rohdaten inkl. Nachbarschaft: ' . count($rows) . '; erkannte Ausreißer an diesem Tag: ' . count($detected) . '.';
+        $diag = [];
+        foreach ($rows as $i => $row) {
+            $ts = (int) $row['TimeStamp'];
+            if ($ts < $start || $ts > $end) { continue; }
+            $val = (float) $row['Value'];
+            $prev = $rows[$i-1] ?? null;
+            $next = $rows[$i+1] ?? null;
+            $abnormal = $val == 0.0;
+            if ($prev && $next) {
+                $deviation = abs($val - ((float)$prev['Value'] + (float)$next['Value']) / 2);
+                $abnormal = $abnormal || $deviation >= max(0.001, (float)($target['Spike'] ?? 3));
+            }
+            if (!isset($detected[(string)$ts]) && !$abnormal) { continue; }
+            $neighbors = ($prev ? (string)$prev['Value'] : '–') . ' / ' . ($next ? (string)$next['Value'] : '–');
+            if (isset($detected[(string)$ts])) {
+                $status = 'ERKANNT (nicht gelöscht)';
+            } elseif (!$prev || !$next) {
+                $status = 'NICHT ERKANNT: Nachbarwert fehlt';
+            } else {
+                $dt1 = $ts - (int)$prev['TimeStamp'];
+                $dt2 = (int)$next['TimeStamp'] - $ts;
+                $threshold = $this->threshold($target, $profile, min($dt1, $dt2));
+                $anchor = abs((float)$next['Value'] - (float)$prev['Value']);
+                $maxAnchor = max((float)($target['NeighborTolerance'] ?? 1), (float)($profile['q95'] ?? 0) * 1.5);
+                if ($dt1 > $gap || $dt2 > $gap) {
+                    $status = 'NICHT ERKANNT: Zeitabstand ' . max($dt1, $dt2) . ' s > ' . $gap . ' s';
+                } elseif ($anchor > $maxAnchor) {
+                    $status = 'NICHT ERKANNT: Nachbarn differieren ' . round($anchor, 2) . ' > ' . round($maxAnchor, 2);
+                } else {
+                    $status = 'NICHT ERKANNT: Schwelle ' . round($threshold, 2) . ' / ggf. Fehlerfolge';
+                }
+            }
+            $diag[] = $this->detailRow($id, $row, $status, $neighbors);
+            $lines[] = date('d.m.Y H:i:s', $ts) . ' | ' . $val . ' | Nachbarn ' . $neighbors . ' | ' . $status;
+            if (count($diag) >= 300) { $lines[] = 'Diagnose auf 300 auffällige Werte begrenzt.'; break; }
+        }
+        if (!$diag) { $lines[] = 'Keine auffälligen Rohwerte nach Diagnosekriterien gefunden.'; }
+        $report = implode("\n", $lines);
+        $this->saveReport($report, $diag);
+        return $report;
     }
 
     /** Training is manual and never deletes anything. */
@@ -280,6 +408,7 @@ class ArchiveWatchdog extends IPSModule
             'Prüfbereich: ' . date('d.m.Y H:i', $start) . ' bis ' . date('d.m.Y H:i', $end) . '.'];
         $totalFound = 0;
         $totalDeleted = 0;
+        $diagnosis = [];
         foreach ($this->targets() as $t) {
             if (isset($t['Enabled']) && !$t['Enabled']) {
                 continue;
@@ -331,6 +460,17 @@ class ArchiveWatchdog extends IPSModule
             $count = count($bad);
             $totalFound += $count;
             $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (auch kurze Fehlerfolgen).';
+            foreach ($bad as $item) {
+                if (count($diagnosis) < 300) {
+                    $diagnosis[] = $this->detailRow($id, $item, $delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)');
+                }
+            }
+            $diagIndex = [];
+            foreach ($diagnosis as $idx => $dr) {
+                if ($dr['Variable'] === IPS_GetName($id) . ' (' . $id . ')') {
+                    $diagIndex[$dr['Date']] = $idx;
+                }
+            }
             $shown = 0;
             foreach ($bad as $item) {
                 if ($shown++ >= 20) {
@@ -351,28 +491,35 @@ class ArchiveWatchdog extends IPSModule
                     try {
                         // API returns an INTEGER count, not a boolean success status.
                         $removed = AC_DeleteVariableData($archive, $id, $ts, $ts);
+                        $di = $diagIndex[date('d.m.Y H:i:s', $ts)] ?? null;
                         if (!is_int($removed) || $removed < 0) {
                             $failed++;
+                            if ($di !== null) { $diagnosis[$di]['Status'] = 'FEHLER: ungültiger Lösch-Rückgabewert'; }
                             $this->SendDebug('Delete', 'Unerwarteter Rückgabewert für ' . $id . '/' . $ts . ': ' . var_export($removed, true), 0);
                             continue;
                         }
                         if ($removed === 0) {
+                            if ($di !== null) { $diagnosis[$di]['Status'] = 'NICHT GELÖSCHT: API meldet 0'; }
                             $notFound++;
                             continue;
                         }
                         $deleted += $removed;
                         $successfulCalls++;
+                        if ($di !== null) { $diagnosis[$di]['Status'] = 'GELÖSCHT (Prüfung läuft)'; }
                         // Verify the raw record no longer exists; reaggregation cannot delete raw values.
                         $check = AC_GetLoggedValues($archive, $id, max(1, $ts - 1), $ts + 1, 100);
                         foreach ($check as $row) {
                             if ((int) ($row['TimeStamp'] ?? -1) === $ts) {
                                 $remaining++;
+                                if ($di !== null) { $diagnosis[$di]['Status'] = 'WARNUNG: Rohwert noch vorhanden'; }
                                 $this->SendDebug('DeleteVerify', 'Wert verbleibt bei ' . $id . '/' . $ts, 0);
                                 break;
                             }
                         }
                     } catch (Throwable $e) {
                         $failed++;
+                        $di = $diagIndex[date('d.m.Y H:i:s', $ts)] ?? null;
+                        if ($di !== null) { $diagnosis[$di]['Status'] = 'FEHLER: ' . $e->getMessage(); }
                         $this->SendDebug('Delete', 'Fehler bei ' . $id . ' / ' . $ts . ': ' . $e->getMessage(), 0);
                     }
                 }
@@ -406,7 +553,7 @@ class ArchiveWatchdog extends IPSModule
         $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', tatsächlich gelöschte Datensätze: ' . $totalDeleted : '') . '.';
         $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt.';
         $report = implode("\n", $lines);
-        $this->SendDebug('Scan', $report, 0);
+        $this->saveReport($report, $diagnosis);
         return $report;
     }
 }
