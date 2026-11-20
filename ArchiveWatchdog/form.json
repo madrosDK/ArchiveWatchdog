@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.01 (Build 4): Archivbereinigung mit automatischer Reaggregation nach erfolgreichen Löschungen. Vorschau und Lernlauf ändern das Archiv nicht."
+      "caption": "v0.3.02 (Build 5): Gelöschte Datensätze werden gezählt; Rohdaten-Löschung geprüft; Reaggregation nur nach tatsächlicher Löschung gestartet."
     },
     {
       "type": "CheckBox",
@@ -170,7 +170,7 @@
     },
     {
       "type": "Label",
-      "caption": "Die Löschfunktion entfernt nur eindeutig erkannte Ausreißer, nicht alle Messwerte. Änderungen an Parametern erst Übernehmen, dann erneut lernen und in der Vorschau prüfen. Langfristige falsche Sprünge/Resets werden nicht automatisch entfernt. Nach erfolgreichen Löschungen wird die betroffene Variable automatisch reaggregiert, nicht bei der Vorschau."
+      "caption": "Bei Löschung zählt das Modul die wirklich entfernten Datensätze und kontrolliert die Rohdaten. Reaggregation wird danach nur bei tatsächlicher Löschung gestartet und kann im IP-Symcon-Meldungsfenster einige Zeit laufen. Keine Reaggregation bei Vorschau oder Lernen."
     }
   ]
 }

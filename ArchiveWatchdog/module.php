@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.01 (Build 4). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.02 (Build 5). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -342,15 +342,34 @@ class ArchiveWatchdog extends IPSModule
             }
             if ($delete && $bad) {
                 $deleted = 0;
+                $successfulCalls = 0;
                 $failed = 0;
+                $notFound = 0;
+                $remaining = 0;
                 foreach ($bad as $item) {
-                    $ts = $item['TimeStamp'];
+                    $ts = (int) $item['TimeStamp'];
                     try {
-                        // AC_DeleteVariableData returns bool; do not cast it into a count of archive points.
-                        if (AC_DeleteVariableData($archive, $id, $ts, $ts)) {
-                            $deleted++;
-                        } else {
+                        // API returns an INTEGER count, not a boolean success status.
+                        $removed = AC_DeleteVariableData($archive, $id, $ts, $ts);
+                        if (!is_int($removed) || $removed < 0) {
                             $failed++;
+                            $this->SendDebug('Delete', 'Unerwarteter Rückgabewert für ' . $id . '/' . $ts . ': ' . var_export($removed, true), 0);
+                            continue;
+                        }
+                        if ($removed === 0) {
+                            $notFound++;
+                            continue;
+                        }
+                        $deleted += $removed;
+                        $successfulCalls++;
+                        // Verify the raw record no longer exists; reaggregation cannot delete raw values.
+                        $check = AC_GetLoggedValues($archive, $id, max(1, $ts - 1), $ts + 1, 100);
+                        foreach ($check as $row) {
+                            if ((int) ($row['TimeStamp'] ?? -1) === $ts) {
+                                $remaining++;
+                                $this->SendDebug('DeleteVerify', 'Wert verbleibt bei ' . $id . '/' . $ts, 0);
+                                break;
+                            }
                         }
                     } catch (Throwable $e) {
                         $failed++;
@@ -358,27 +377,33 @@ class ArchiveWatchdog extends IPSModule
                     }
                 }
                 $totalDeleted += $deleted;
-                $lines[] = '  Löschaufrufe erfolgreich: ' . $deleted . ', fehlgeschlagen: ' . $failed . '.';
-                // Nur nach mindestens einem erfolgreichen Löschaufruf reaggregieren.
-                // Die Reaggregation erfolgt einmal pro Variable nach allen Löschungen,
-                // niemals beim Lernen oder bei einer reinen Vorschau.
+                $lines[] = '  Tatsächlich gelöschte Datensätze (API): ' . $deleted
+                    . '; Löschaufrufe mit >0: ' . $successfulCalls
+                    . '; keine Datensätze gefunden: ' . $notFound
+                    . '; Fehler: ' . $failed . '.';
+                if ($remaining > 0) {
+                    $lines[] = '  WARNUNG: Bei ' . $remaining . ' Löschaufrufen sind weiterhin Rohwerte am Zeitstempel auffindbar!';
+                }
+                // One reaggregation request per variable, and ONLY when records were actually deleted.
                 if ($deleted > 0) {
                     try {
                         if (AC_ReAggregateVariable($archive, $id)) {
-                            $lines[] = '  Archivaggregation erfolgreich aktualisiert.';
-                            $this->SendDebug('ReAggregate', 'Variable ' . $id . ': erfolgreich nach ' . $deleted . ' Löschaufrufen.', 0);
+                            $lines[] = '  Reaggregation ANGEFORDERT (Abschluss asynchron; im IP-Symcon-Meldungsfenster kontrollieren).';
+                            $this->SendDebug('ReAggregate', 'Variable ' . $id . ': gestartet nach ' . $deleted . ' gelöschten Datensätzen.', 0);
                         } else {
-                            $lines[] = '  WARNUNG: Archivaggregation konnte nicht aktualisiert werden!';
+                            $lines[] = '  WARNUNG: Reaggregation konnte nicht gestartet werden!';
                             $this->SendDebug('ReAggregate', 'Variable ' . $id . ': Rückgabewert false.', 0);
                         }
                     } catch (Throwable $e) {
-                        $lines[] = '  WARNUNG: Fehler bei Archivaggregation: ' . $e->getMessage();
+                        $lines[] = '  WARNUNG: Fehler beim Start der Reaggregation: ' . $e->getMessage();
                         $this->SendDebug('ReAggregate', 'Variable ' . $id . ': ' . $e->getMessage(), 0);
                     }
+                } else {
+                    $lines[] = '  Keine Reaggregation: Es wurden keine Datensätze gelöscht.';
                 }
             }
         }
-        $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', Löschaufrufe erfolgreich: ' . $totalDeleted : '') . '.';
+        $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', tatsächlich gelöschte Datensätze: ' . $totalDeleted : '') . '.';
         $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt.';
         $report = implode("\n", $lines);
         $this->SendDebug('Scan', $report, 0);

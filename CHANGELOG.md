@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.02 · Build 5 (2026-11-20)
+
+### Korrigiert
+- `AC_DeleteVariableData()` liefert die Anzahl tatsächlich gelöschter Archivdatensätze (Integer), keinen booleschen Erfolg. Der Rückgabewert wird nun korrekt ausgewertet; 0 wird als keine Löschung behandelt.
+- Nach positiven Löschungen werden die betroffenen Zeitstempel aus den Rohdaten nachgelesen und verbleibende Werte als Warnung ausgewiesen.
+- `AC_ReAggregateVariable()` wird weiterhin nur nach tatsächlichen Löschungen einmal je Variable gestartet; der Bericht bezeichnet den Vorgang ausdrücklich als **gestartet**, nicht als abgeschlossen.
+- Meldungen unterscheiden erkannte Ausreißer, tatsächlich gelöschte Datensätze und fehlgeschlagene Löschaufrufe.
+
 ## 0.3.01 · Build 4 (2026-11-20)
 
 ### Geändert
