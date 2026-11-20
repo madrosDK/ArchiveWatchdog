@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.10 (Build 13). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.11 (Build 14). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -184,7 +184,7 @@ class ArchiveWatchdog extends IPSModule
         }
         $target = $this->effectiveTarget($target, $profile);
         $gap = $this->allowedGap($target, $profile);
-        $pad = (int) ($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap) : max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
+        $pad = (int) ($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap) : max(259200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
         try {
             $rows = AC_GetLoggedValues($archive, $id, max(1, $start - $pad), $end + $pad, 10000);
         } catch (Throwable $e) {
@@ -213,7 +213,7 @@ class ArchiveWatchdog extends IPSModule
             if (!isset($detected[(string)$ts]) && !$abnormal) { continue; }
             $neighbors = ($prev ? (string)$prev['Value'] : '–') . ' / ' . ($next ? (string)$next['Value'] : '–');
             if (isset($detected[(string)$ts])) {
-                $status = 'ERKANNT (löschbar nach Bestätigung)';
+                $status = 'ERKANNT: ' . ($detected[(string)$ts]['Reason'] ?? (!empty($detected[(string)$ts]['ReviewOnly']) ? 'manuelle Freigabe erforderlich' : 'löschbar nach Bestätigung'));
             } elseif (!$prev || !$next) {
                 $status = 'NICHT ERKANNT: Nachbarwert fehlt';
             } else {
@@ -270,7 +270,7 @@ class ArchiveWatchdog extends IPSModule
         $target = $this->effectiveTarget($target, $profile);
         $gap = $this->allowedGap($target, $profile);
         $pad = (int)($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap)
-            : max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
+            : max(259200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
         try {
             $rows = AC_GetLoggedValues($archive, $id, max(1, $start - $pad), $start + 86399 + $pad, 10000);
             if (count($rows) >= 10000) { return 'Zu viele Rohwerte; Löschung abgebrochen.'; }
@@ -434,6 +434,119 @@ class ArchiveWatchdog extends IPSModule
         return max($manual, (float) ($profile['q95'] ?? 0) * $factor * $scale);
     }
 
+    /**
+     * Erkenne mehrstündige Zähler-Störphasen mit wiederholten Vor-/Rücksprüngen.
+     * An beiden Seiten sind mehrere ruhige, richtungstreue Anker notwendig.
+     * Mehrpunkt-Phasen bleiben IMMER manuell prüfpflichtig (ReviewOnly),
+     * auch wenn die automatische Löschung eingeschaltet ist.
+     */
+    private function detectCounterEpisodes(array $rows, array $target, array $profile, int $start, int $end): array
+    {
+        $n = count($rows);
+        if ($n < 12) { return []; }
+        $mode = (int)($target['Mode'] ?? 0);
+        if ($mode === 0) { return []; }
+        $dir = $mode === 1 ? 1.0 : -1.0;
+        $positive = [];
+        $timeRates = [];
+        for ($i = 1; $i < $n; $i++) {
+            $dt = (int)$rows[$i]['TimeStamp'] - (int)$rows[$i-1]['TimeStamp'];
+            $dv = $dir * ((float)$rows[$i]['Value'] - (float)$rows[$i-1]['Value']);
+            if ($dt > 0 && $dv >= 0 && is_finite($dv)) {
+                $positive[] = $dv;
+                $timeRates[] = $dv * 3600.0 / $dt;
+            }
+        }
+        if (count($positive) < 6) { return []; }
+        sort($positive, SORT_NUMERIC);
+        sort($timeRates, SORT_NUMERIC);
+        // Untere Hälfte verhindert, dass wiederholte, große Fehl-Sprünge
+        // die für die Erkennung verwendete Normalrate selbst erhöhen.
+        $medianStep = max(0.001, $this->percentile($positive, 0.40));
+        $baseRate = max(0.001, $this->percentile($timeRates, 0.40));
+        $edgeBad = array_fill(0, $n, false);
+        $edgeLimit = [];
+        for ($i = 1; $i < $n; $i++) {
+            $dt = (int)$rows[$i]['TimeStamp'] - (int)$rows[$i-1]['TimeStamp'];
+            if ($dt <= 0) { continue; }
+            $dv = $dir * ((float)$rows[$i]['Value'] - (float)$rows[$i-1]['Value']);
+            $limit = max(8.0 * $medianStep, 4.0 * $baseRate * $dt / 3600.0, 1.0);
+            $edgeLimit[$i] = $limit;
+            $edgeBad[$i] = $dv < -$limit || $dv > $limit;
+        }
+        $badEdges = [];
+        for ($i = 1; $i < $n; $i++) {
+            if ($edgeBad[$i]) { $badEdges[] = $i; }
+        }
+        if (count($badEdges) < 2) { return []; }
+
+        $isStable = static function (int $a, int $b) use ($rows, $edgeBad): bool {
+            if ($a < 0 || $b >= count($rows) || $b - $a < 2) { return false; }
+            for ($k = $a + 1; $k <= $b; $k++) {
+                if ($edgeBad[$k]) { return false; }
+                if ((int)$rows[$k]['TimeStamp'] <= (int)$rows[$k-1]['TimeStamp']) { return false; }
+            }
+            return true;
+        };
+        $result = [];
+        $groups = [];
+        $group = [];
+        foreach ($badEdges as $idx) {
+            if ($group && (int)$rows[$idx]['TimeStamp'] - (int)$rows[end($group)]['TimeStamp'] > 24*3600) {
+                $groups[] = $group;
+                $group = [];
+            }
+            $group[] = $idx;
+        }
+        if ($group) { $groups[] = $group; }
+        foreach ($groups as $g) {
+            if (count($g) < 2) { continue; }
+            $first = $g[0];
+            $last = end($g);
+            if ((int)$rows[$last]['TimeStamp'] - (int)$rows[$first]['TimeStamp'] > 48*3600) { continue; }
+            $left = -1;
+            // Normaler Anker vor dem ersten Sprung: 3 saubere Verbindungen.
+            for ($i = $first - 1; $i >= max(3, $first - 200); $i--) {
+                if ($isStable($i - 3, $i)) { $left = $i; break; }
+            }
+            $right = -1;
+            // Nach dem letzten Sprung: 3 aufeinanderfolgende plausible Verbindungen.
+            for ($i = $last; $i <= min($n - 4, $last + 200); $i++) {
+                if ($isStable($i, $i + 3)) { $right = $i; break; }
+            }
+            if ($left < 0 || $right <= $left + 1) { continue; }
+            $aTs = (int)$rows[$left]['TimeStamp'];
+            $zTs = (int)$rows[$right]['TimeStamp'];
+            $aV = (float)$rows[$left]['Value'];
+            $zV = (float)$rows[$right]['Value'];
+            $duration = $zTs - $aTs;
+            if ($duration <= 0 || $duration > 72*3600) { continue; }
+            $anchorChange = $dir * ($zV - $aV);
+            $anchorAllowance = max(4*$medianStep, 4*$baseRate*$duration/3600.0);
+            // Keine Freigabe bei dauerhaft geändertem Zählerstand/Reset.
+            if ($anchorChange < -$anchorAllowance || $anchorChange > $anchorAllowance) { continue; }
+            $episode = [];
+            for ($j = $left + 1; $j < $right; $j++) {
+                $ts = (int)$rows[$j]['TimeStamp'];
+                if ($ts < $start || $ts > $end) { continue; }
+                $v = (float)$rows[$j]['Value'];
+                $expected = $aV + ($zV-$aV)*($ts-$aTs)/$duration;
+                // Achtung: großzügiger Korridor um die plausible Ankerlinie.
+                $typicalSeconds = max(60.0, (float)($profile['medianInterval'] ?? 600.0));
+                $threshold = max(8*$medianStep, 4*$baseRate*$typicalSeconds/3600.0, 1.0);
+                if (abs($v - $expected) > $threshold) {
+                    $episode[(string)$ts] = [
+                        'TimeStamp'=>$ts, 'Value'=>$v, 'Expected'=>$expected,
+                        'Threshold'=>$threshold, 'ReviewOnly'=>true,
+                        'Reason'=>'Mehrpunkt-Zähler-Störphase; Anker '.date('d.m H:i',$aTs).' / '.date('d.m H:i',$zTs)
+                    ];
+                }
+            }
+            if (count($episode) >= 2) { $result += $episode; }
+        }
+        return $result;
+    }
+
     /** Detect a short wrong-valued run surrounded by plausible anchors. */
     private function detect(array $rows, array $target, array $profile, int $start, int $end): array
     {
@@ -521,6 +634,13 @@ class ArchiveWatchdog extends IPSModule
                 $i += count($best) - 1;
             }
         }
+        // Zusätzliche Störphasen-Erkennung, unabhängig von MaxErrorSeries.
+        if ($mode !== 0) {
+            foreach ($this->detectCounterEpisodes($rows, $target, $profile, $start, $end) as $key => $item) {
+                // Ein mehrpunktiger Störabschnitt hat Vorrang vor Einzelwert-Freigaben.
+                $bad[$key] = $item;
+            }
+        }
         return $bad;
     }
 
@@ -579,7 +699,7 @@ class ArchiveWatchdog extends IPSModule
             $gap = $this->allowedGap($t, $profile);
             $overlap = (int) ($t['Mode'] ?? 0) === 0
                 ? max(172800, $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2))
-                : $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2);
+                : max(259200, $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2));
             $bad = [];
             $incomplete = false;
             $note = '';
@@ -618,7 +738,7 @@ class ArchiveWatchdog extends IPSModule
                 if (count($diagnosis) < 300) {
                     $diagnosis[] = $this->detailRow($id, $item,
                         !empty($item['ReviewOnly'])
-                            ? ($delete && $includeReview ? 'FREIGEGEBEN: Zähler-Zeitlücke; Löschung folgt' : 'ZÄHLER: Freigabe nötig bei großer Zeitlücke')
+                            ? ($delete && $includeReview ? 'FREIGEGEBEN: Prüfung nötig; Löschung folgt' : 'ZÄHLER: manuelle Freigabe nötig')
                             : ($delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)'));
                 }
             }
@@ -635,7 +755,7 @@ class ArchiveWatchdog extends IPSModule
                     break;
                 }
                 $lines[] = '  ' . date('d.m.Y H:i:s', $item['TimeStamp']) . ': ' . $item['Value']
-                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')';
+                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')' . (isset($item['Reason']) ? ' [Störphase, manuelle Prüfung]' : '');
             }
             if ($delete && $bad) {
                 $deleted = 0;

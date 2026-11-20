@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.11 · Build 14 (2026-11-20)
+
+### Verbessert
+- Mehrstündige Zähler-Störphasen mit wechselnden Vor- und Rücksprüngen zusätzlich zur bisherigen Einzelwertprüfung erkennen.
+- Ruhige Anker vor und nach der Störphase und robuste, aus kleinen normalen Schritten ermittelte Änderungsrate verwenden.
+- Diagnose und Tages-/Gesamtarchivprüfung verwenden dieselbe Erkennung; erweitertes Überlappungsfenster (72 h) für Störungen über Mitternacht.
+- Mehrpunktige Zähler-Störphasen ausschließlich in der Vorschau bzw. nach gesonderter manueller Freigabe löschen; dauerhafte Resets bleiben geschützt.
+- Nach bestätigter und erfolgreicher Löschung betroffene Variable einmal reaggregieren, niemals während Vorschau/Lernen.
+
 ## 0.3.10 · Build 13 (2026-11-20)
 
 ### Geändert

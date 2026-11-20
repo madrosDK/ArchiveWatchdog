@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.10 (Build 13): Messwerte ohne Zeitlimit; Zähler mit gelerntem Änderungswert pro Stunde und sicherer Prüfung."
+      "caption": "v0.3.11 (Build 14): mehrstündige Zähler-Störphasen mit wechselnden Sprüngen erkennen; mehrpunktige Störungen nur mit manueller Freigabe löschen."
     },
     {
       "type": "CheckBox",
@@ -245,7 +245,7 @@
     },
     {
       "type": "Label",
-      "caption": "Normale Messwerte: keine zeitbedingte Sperre. Zähler: zeitabhängige Änderung, lange Pausen werden zur Freigabe markiert. Dauerhafte Zählerresets werden NICHT automatisch korrigiert. Reaggregation ausschließlich nach erfolgreichen Löschungen."
+      "caption": "Messwerte ohne Zeitgrenze. Zähler: Einzelwertfehler und mehrstündige Störphasen; Störphasen erfordern ausdrücklich bestätigte Bereinigung. Kein automatisches Löschen solcher Phasen."
     }
   ]
 }

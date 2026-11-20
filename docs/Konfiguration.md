@@ -1,4 +1,4 @@
-## Verhalten v0.3.10
+## Verhalten v0.3.11
 
 **Messwert:** Keine feste Zeitbegrenzung in Erkennung und Löschung. Gültige Vergleichswerte links/rechts und eine ausreichend große Abweichung bleiben notwendig.
 
@@ -128,3 +128,8 @@ Die Einstellung **Manuelle Freigabe: Uhrzeit HH:MM:SS** bezeichnet exakt einen b
 ## Fehlerkorrektur in v0.3.08
 
 Bei allen sechs Archivscan-Aktionen werden Instanz-ID und die drei Parameter der Methode `Scan` explizit übergeben, damit der von IP-Symcon generierte globale `AWD_Scan`-Wrapper nicht mit `ArgumentCountError` abbricht. Die automatischen Timer und die Lösch-/Reaggregationsregeln bleiben unverändert.
+
+
+## Zähler-Störphasen
+
+Zusätzlich zu einzelnen kurzzeitigen Messfehlern sucht der Watchdog nach längeren Folgen großer Rück- und Vorwärtssprünge (max. 48 h zwischen erstem und letztem Sprung, Ankerfenster bis 72 h). Erforderlich sind mindestens drei plausible Fortschritte vor und nach der Störung sowie ein insgesamt plausibler Stand am Ende. Die Ausreißer werden gegen eine linear interpolierte Ankerlinie mit großzügigem Abstandskorridor geprüft. Die Erkennung nutzt eine robuste Normalrate aus den kleineren Zählerschritten, um falsche Spitzen nicht als normal anzulernen. Bei längeren Störphasen kann es Mehrdeutigkeiten geben; sie sind deshalb als **manuelle Prüfung nötig** gekennzeichnet und werden durch AutoDelete oder gewöhnliche sichere Löschung übersprungen. Nur gesondert bestätigte Löschaktionen können sie entfernen. Die Reaggregation erfolgt nach erfolgreicher Löschung einmal je Variable. Nicht alle echten Fehlerphasen sind automatisch eindeutig rekonstruierbar; bei dauerhaftem Zähleroffset bleibt manuelle Korrektur nötig.
