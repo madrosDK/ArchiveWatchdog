@@ -1,6 +1,6 @@
 # ArchiveWatchdog – Konfiguration
 
-Version 0.3.06 · Build 9
+Version 0.3.07 · Build 10
 
 ## Allgemeine Einstellungen
 
@@ -93,3 +93,13 @@ Im Automatikmodus gilt für Messwerte mit q95-Lernwert die automatische Sprungsc
 Die Diagnose berechnet die wirksamen Grenzwerte aus demselben Profil und derselben Funktion wie die vollständige Vorschau. Eine Diagnose am 16.11. kann Treffer zeigen, während ein normaler 48-Stunden-Rückblick ab 18.11. keinen Treffer enthält. Für historische Werte den Archiv-Startzeitpunkt passend setzen und die vollständige Archivvorschau wählen.
 
 Die Einstellung **Manuelle Freigabe: Uhrzeit HH:MM:SS** bezeichnet exakt einen bereits in der Diagnose erkannten *Nur manuelle Prüfung*-Kandidaten des angegebenen Diagnosetags. **Manuell bestätigten Ausreißer ... löschen** verlangt eine Sicherheitsbestätigung und prüft den Punkt vor der Löschung erneut. Nur nach tatsächlicher Löschung wird die Reaggregation angefordert. Es gibt keine automatische Sammellöschung für diese Review-Kandidaten. Bei Vorschauläufen wird nie reaggregiert.
+
+## Vollständige Bereinigung mit manueller Freigabe (v0.3.07)
+
+**Sichere Bereinigung – Prüfzeitraum / Archiv ab Startdatum:** Bestehende Erkennung und die 120-Minuten-Sicherheitsregel bleiben erhalten. Erkannte Ausreißer mit großen Datenlücken werden gemeldet, nicht gelöscht.
+
+**Vollständige Bereinigung MIT manueller Freigabe – Prüfzeitraum / Archiv ab Startdatum:** Nur nach der direkten Bestätigung des jeweiligen Buttons werden auch die erkannten und als `ReviewOnly` markierten Kandidaten gelöscht. Die separate Freigabe gilt ausschließlich für diesen Aufruf. Sie wird weder dauerhaft gespeichert noch vom Timer übernommen. Bei einem Archiv-Gesamtlauf gilt das konfigurierte `Archiv ab Datum`.
+
+**Vorgeschlagener Ablauf:** Archiv sichern → Zeitraum kontrollieren → passende Vorschau starten → Tabelle mit maximal 300 Einträgen und vollständige Gesamtzahlen prüfen → bestätigte vollständige Bereinigung starten → im Abschlussbericht die Anzahl tatsächlich gelöschter Datensätze kontrollieren → Abschluss der Reaggregation im IP-Symcon-Meldungsfenster prüfen und Diagramm neu laden. Eine 0 in der Löschstatistik bedeutet, dass kein Archivwert entfernt wurde.
+
+**Risiko:** Bei großen Datenlücken kann ein erkannter Kandidat ein echter Messwert sein. Die Bestätigung hebt nur die Sperre für große Lücken auf und löscht weiterhin ausschließlich erkannte Kandidaten; sie garantiert keine fehlerfreie Klassifizierung. Dauerhafte Zähler-Resets und nicht erkannte Fehler werden nicht automatisch korrigiert. Reaggregation findet ausschließlich nach einem positiven Lösch-Rückgabewert einmal je betroffener Variable statt.

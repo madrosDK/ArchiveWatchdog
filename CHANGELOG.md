@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.07 · Build 10 (2026-11-20)
+
+### Neu
+- Zwei zusätzliche, ausdrücklich zu bestätigende Aktionen zur vollständigen Bereinigung im Prüfzeitraum bzw. ab Archiv-Startdatum. Diese berücksichtigen auch von der Erkennung markierte Ausreißer mit großen Datenlücken.
+- Getrennte sichere Löschaktionen behalten die bisherige Schutzregel; der automatische Timer verwendet ausschließlich die sichere Variante und kann die zusätzliche Freigabe nicht speichern oder wiederverwenden.
+- Ausführlichere Berichte mit Anzahl erkannter und als zeitlich unsicher markierter Kandidaten, erfolgreicher Löschungen und wegen fehlender Freigabe übersprungener Werte. Status in der Diagnosetabelle wird nach Löschaufrufen aktualisiert.
+- Reaggregation weiterhin genau einmal je Variable nach mindestens einem tatsächlich gelöschten Datensatz; niemals bei Vorschau, Lernen oder Diagnose.
+- README und Konfigurationsdokumentation aktualisiert; Versionsangaben synchronisiert.
+
+
 ## 0.3.06 · Build 9 (2026-11-20)
 
 ### Ergänzt und vereinfacht

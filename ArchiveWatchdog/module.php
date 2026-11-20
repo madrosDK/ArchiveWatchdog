@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.06 (Build 9). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.07 (Build 10). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -521,7 +521,7 @@ class ArchiveWatchdog extends IPSModule
     }
 
     /** Scan normal range; or entire archive since configured ArchiveStartDate (in daily chunks). */
-    public function Scan(bool $delete = false, bool $wholeArchive = false): string
+    public function Scan(bool $delete = false, bool $wholeArchive = false, bool $includeReview = false): string
     {
         $archive = $this->archiveID();
         if (!$archive) {
@@ -542,10 +542,16 @@ class ArchiveWatchdog extends IPSModule
         if ($start >= $end) {
             return 'Startdatum liegt nach dem Prüfende.';
         }
-        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? 'LÖSCHMODUS' : 'VORSCHAU') . ')',
-            'Prüfbereich: ' . date('d.m.Y H:i', $start) . ' bis ' . date('d.m.Y H:i', $end) . '.'];
+        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? ($includeReview ? 'BESTÄTIGTE VOLLSTÄNDIGE BEREINIGUNG' : 'SICHERE LÖSCHUNG') : 'VORSCHAU') . ')',
+            'Prüfbereich: ' . date('d.m.Y H:i', $start) . ' bis ' . date('d.m.Y H:i', $end) . '.',
+            $delete ? ($includeReview
+                ? 'EXPLIZITE FREIGABE: Auch markierte Ausreißer mit großer Datenlücke werden nach erneuter Prüfung gelöscht.'
+                : 'Sichere Löschung: Bei großen Datenlücken werden Kandidaten zurückgehalten.')
+                : 'Vorschau: keine Löschung, keine Reaggregation.'];
         $totalFound = 0;
         $totalDeleted = 0;
+        $totalReview = 0;
+        $totalSkipped = 0;
         $diagnosis = [];
         foreach ($this->targets() as $t) {
             if (isset($t['Enabled']) && !$t['Enabled']) {
@@ -604,10 +610,14 @@ class ArchiveWatchdog extends IPSModule
             $count = count($bad);
             $totalFound += $count;
             $reviewCount = count(array_filter($bad, static fn($item) => !empty($item['ReviewOnly'])));
+            $totalReview += $reviewCount;
             $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (davon ' . $reviewCount . ' mit großer Datenlücke nur zur manuellen Prüfung); ' . ((int)($t['Mode'] ?? 0) === 0 ? 'keine harte Zeitgrenze für Messwerte.' : 'Zähler-Maximalabstand ' . round($gap / 60, 1) . ' min.');
             foreach ($bad as $item) {
                 if (count($diagnosis) < 300) {
-                    $diagnosis[] = $this->detailRow($id, $item, !empty($item['ReviewOnly']) ? 'NUR VORSCHAU: große Datenlücke' : ($delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)'));
+                    $diagnosis[] = $this->detailRow($id, $item,
+                        !empty($item['ReviewOnly'])
+                            ? ($delete && $includeReview ? 'FREIGEGEBEN: große Datenlücke; Löschung folgt' : 'MANUELLE FREIGABE NÖTIG: große Datenlücke')
+                            : ($delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)'));
                 }
             }
             $diagIndex = [];
@@ -632,7 +642,12 @@ class ArchiveWatchdog extends IPSModule
                 $notFound = 0;
                 $remaining = 0;
                 foreach ($bad as $item) {
-                    if (!empty($item['ReviewOnly'])) { continue; }
+                    if (!empty($item['ReviewOnly']) && !$includeReview) {
+                        $totalSkipped++;
+                        $di = $diagIndex[date('d.m.Y H:i:s', (int)$item['TimeStamp'])] ?? null;
+                        if ($di !== null) { $diagnosis[$di]['Status'] = 'NICHT GELÖSCHT: manuelle Freigabe erforderlich'; }
+                        continue;
+                    }
                     $ts = (int) $item['TimeStamp'];
                     try {
                         // API returns an INTEGER count, not a boolean success status.
@@ -670,7 +685,8 @@ class ArchiveWatchdog extends IPSModule
                     }
                 }
                 $totalDeleted += $deleted;
-                $lines[] = '  Nur zur manuellen Prüfung (nicht gelöscht): ' . $reviewCount . '.';
+                $lines[] = '  Wegen großer Datenlücken markiert: ' . $reviewCount
+                    . ($includeReview ? ' (ausdrücklich für Löschung freigegeben).' : ' (in sicherem Löschmodus übersprungen).');
                 $lines[] = '  Tatsächlich gelöschte Datensätze (API): ' . $deleted
                     . '; Löschaufrufe mit >0: ' . $successfulCalls
                     . '; keine Datensätze gefunden: ' . $notFound
@@ -697,7 +713,14 @@ class ArchiveWatchdog extends IPSModule
                 }
             }
         }
-        $lines[] = 'Gesamt erkannt: ' . $totalFound . ($delete ? ', tatsächlich gelöschte Datensätze: ' . $totalDeleted : '') . '.';
+        $lines[] = 'Gesamt erkannt: ' . $totalFound . '; davon wegen großer Datenlücken markiert: ' . $totalReview . '.';
+        if ($delete) {
+            $lines[] = 'Tatsächlich gelöschte Datensätze (Archiv-API): ' . $totalDeleted
+                . '; mangels Freigabe übersprungen: ' . $totalSkipped . '.';
+            if (!$includeReview && $totalSkipped > 0) {
+                $lines[] = 'Für diese markierten Kandidaten den separaten Knopf „Vollständige Bereinigung MIT manueller Freigabe“ verwenden (vorher Vorschau und Archiv-Sicherung).';
+            }
+        }
         $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt.';
         $report = implode("\n", $lines);
         $this->saveReport($report, $diagnosis);
