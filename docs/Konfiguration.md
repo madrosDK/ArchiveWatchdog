@@ -1,6 +1,6 @@
 # ArchiveWatchdog – Konfiguration
 
-Version 0.3.05 · Build 8
+Version 0.3.06 · Build 9
 
 ## Allgemeine Einstellungen
 
@@ -73,3 +73,23 @@ Die Reaggregation wird **nicht für jeden einzelnen Messpunkt**, sondern nach s�
 **Zähler:** `Max. Abstand (min)` bleibt eine strikte Bedingung für zeitlich plausible Zählerverläufe.
 
 `Lückenfaktor` ist kein konfigurierbarer Parameter mehr; vorhandene Einstellungen werden bei Updates nicht aktiv genutzt. Bei Vorschau, Diagnose und Lernen wird nie reaggregiert. Bei Löschen reaggregiert das Modul ausschließlich Variablen mit tatsächlich gelöschten Rohwerten.
+
+## Vereinfachte Variablen-Einstellungen (v0.3.06)
+
+| Einstellung | Funktion |
+| --- | --- |
+| Variable | Archivierte Integer-/Float-Variable auswählen. |
+| Verlauf | Messwert / Zähler aufwärts / Zähler abwärts. |
+| Empfindlichkeit | Empfindlich = engere, Normal = mittlere, Großzügig = weitere Grenzwerte. Verwendet das bestehende Lernprofil, wenn vorhanden. |
+| Aktiv | Variable in Prüfungen berücksichtigen. |
+| Erweiterte Einstellungen für Variablen anzeigen | Schaltet nach „Übernehmen“ zusätzliche Spalten frei. |
+| Manuelle Grenzen | Verwendet die gespeicherten Werte für Min. Sprung und Nachbar-Toleranz anstatt der automatisch gewählten Werte. |
+| Max. Abstand (min) | Nur für Zählervariablen; ohne Einfluss auf die Zeitgrenze normaler Messwerte. |
+
+Im Automatikmodus gilt für Messwerte mit q95-Lernwert die automatische Sprungschwelle: maximal aus 0,5 und q95 × Empfindlich 1,5 / Normal 3 / Großzügig 5. Die Nachbar-Toleranz wird ähnlich aus q95 abgeleitet. Bei fehlendem Lernprofil gelten weiterhin die bisherigen manuellen Fallbackwerte. Der frühere globale Großzügigkeitsfaktor wirkt nur bei ausdrücklich aktivierten manuellen Grenzen.
+
+## Einzeltag-Diagnose und gezielte Löschung
+
+Die Diagnose berechnet die wirksamen Grenzwerte aus demselben Profil und derselben Funktion wie die vollständige Vorschau. Eine Diagnose am 16.11. kann Treffer zeigen, während ein normaler 48-Stunden-Rückblick ab 18.11. keinen Treffer enthält. Für historische Werte den Archiv-Startzeitpunkt passend setzen und die vollständige Archivvorschau wählen.
+
+Die Einstellung **Manuelle Freigabe: Uhrzeit HH:MM:SS** bezeichnet exakt einen bereits in der Diagnose erkannten *Nur manuelle Prüfung*-Kandidaten des angegebenen Diagnosetags. **Manuell bestätigten Ausreißer ... löschen** verlangt eine Sicherheitsbestätigung und prüft den Punkt vor der Löschung erneut. Nur nach tatsächlicher Löschung wird die Reaggregation angefordert. Es gibt keine automatische Sammellöschung für diese Review-Kandidaten. Bei Vorschauläufen wird nie reaggregiert.

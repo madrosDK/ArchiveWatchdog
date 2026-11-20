@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.06 · Build 9 (2026-11-20)
+
+### Ergänzt und vereinfacht
+- Variablenliste: standardmäßig nur Variable, Verlauf, Empfindlichkeit (Empfindlich/Normal/Großzügig) und Aktiv; erweiterte Grenzwerte auf Wunsch einblendbar.
+- Automatische Grenzwerte aus q95 des Lernprofils, bestehende individuelle Grenzwerte weiterhin im manuellen Modus nutzbar.
+- Archiv-Scan überspringt Variablen ohne passendes Lernprofil nicht mehr, sondern verwendet gespeicherte Fallback-Grenzen.
+- Diagnose und Scan verwenden dieselbe Wirksamkeitsberechnung für die Variablenschwellen.
+- Gezielt bestätigte Löschung eines wegen großer Datenlücke nur zur manuellen Prüfung zugelassenen Ausreißers nach erneuter Rohdatenprüfung.
+- Keine Reaggregation bei Vorschau/Diagnose; nach erfolgreicher gezielter Löschung Reaggregation nur für die betroffene Variable angefordert.
+
+
 ## 0.3.05 · Build 8 (2026-11-20)
 
 ### Geändert

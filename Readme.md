@@ -2,7 +2,7 @@
 
 IP-Symcon-Modul zur Prüfung und gezielten Bereinigung auffälliger Archivwerte von Integer- und Float-Variablen. Unterstützt Messwerte, aufwärtszählende und abwärtszählende Zähler sowie das Erkennen kurzer Fehlerfolgen.
 
-**Version:** 0.3.05 · **Build:** 8
+**Version:** 0.3.06 · **Build:** 9
 
 ## Installation
 
@@ -45,3 +45,13 @@ Beim Verlaufstyp **Messwert** ist die zeitliche Lücke kein Ausschlusskriterium 
 Bei Zählern bleibt die Zeitgrenze `Max. Abstand (min)` aktiv. Die Einstellung `Lückenfaktor` entfällt in der Oberfläche und wird für Messwerte nicht mehr verwendet. Die Großzügigkeits-, Sprung- und Nachbar-Toleranzen bleiben veränderbar.
 
 **Reaggregation:** Einmal pro Variable ausschließlich nach erfolgreich gelöschten Archivdatensätzen; niemals nach Vorschau, Diagnose oder Lernen.
+
+## Vereinfachte Bedienung (v0.3.06)
+
+In der Variablenliste stehen standardmäßig nur **Variable, Verlauf, Empfindlichkeit und Aktiv**. Die Empfindlichkeit *Empfindlich / Normal / Großzügig* steuert den Toleranzbereich aus dem 95%-Lernwert. Ohne gültiges Lernprofil werden die bisherigen gespeicherten Grenzen verwendet; die normale Archivprüfung überspringt die Variable nicht mehr.
+
+**Erweiterte Einstellungen für Variablen anzeigen** aktivieren, übernehmen und die Form erneut öffnen. Dort erscheinen bestehende Grenzwerte und *Manuelle Grenzen*. Erst wenn der manuelle Modus pro Variable aktiv ist, gelten diese Werte anstelle der aus dem Profil berechneten Grenzen. Die Einstellungen bleiben beim Versionswechsel erhalten.
+
+Die **Einzeltag-Diagnose** und die vollständige Prüfung rufen dieselbe Erkennungsfunktion mit denselben wirksamen Schwellen auf. Nur Kandidaten innerhalb des jeweils gewählten Prüfzeitraums werden angezeigt. Der normale Prüfzeitraum kann deshalb null Treffer zeigen, obwohl ein älterer Diagnosetag Treffer enthält. Für ältere Werte **Gesamtes Archiv ab Startdatum prüfen (Vorschau)** nutzen.
+
+**Manuell bestätigte Ausnahme:** Bei einem erkannten Kandidaten mit großer Datenlücke kann nach Kontrolle im Rohdatenarchiv die Uhrzeit *HH:MM:SS* zum eingestellten Diagnose-Datum angegeben und die eigene, bestätigungspflichtige Schaltfläche verwendet werden. Der Rohwert wird unmittelbar vor der Löschung erneut geprüft. Andere Punkte bleiben unberührt. Nach erfolgreicher Löschung wird die Reaggregation angefordert. Diese Funktion ist ausschließlich für als *ReviewOnly* erkannte Punkte vorgesehen.

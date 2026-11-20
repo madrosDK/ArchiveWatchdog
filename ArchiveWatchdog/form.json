@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.05 (Build 8): Messwerte ohne harte Zeitgrenze; große Datenlücken nur Vorschau."
+      "caption": "v0.3.06 (Build 9): einfache Empfindlichkeit; gemeinsame Prüflogik; gezielte manuelle Löschung."
     },
     {
       "type": "CheckBox",
@@ -60,6 +60,11 @@
       "caption": "Archiv ab Datum prüfen/löschen (JJJJ-MM-TT)"
     },
     {
+      "type": "CheckBox",
+      "name": "AdvancedSettings",
+      "caption": "Erweiterte Einstellungen für Variablen anzeigen (danach übernehmen und erneut öffnen)"
+    },
+    {
       "type": "List",
       "name": "Targets",
       "caption": "Überwachte Archivvariablen",
@@ -100,6 +105,29 @@
           }
         },
         {
+          "name": "Sensitivity",
+          "caption": "Empfindlichkeit",
+          "width": "150px",
+          "add": 1,
+          "edit": {
+            "type": "Select",
+            "options": [
+              {
+                "caption": "Empfindlich",
+                "value": 0
+              },
+              {
+                "caption": "Normal",
+                "value": 1
+              },
+              {
+                "caption": "Großzügig",
+                "value": 2
+              }
+            ]
+          }
+        },
+        {
           "name": "Spike",
           "caption": "Min. Sprung",
           "width": "110px",
@@ -129,6 +157,15 @@
           }
         },
         {
+          "name": "UseManual",
+          "caption": "Manuelle Grenzen",
+          "width": "100px",
+          "add": false,
+          "edit": {
+            "type": "CheckBox"
+          }
+        },
+        {
           "name": "Enabled",
           "caption": "Aktiv",
           "width": "80px",
@@ -148,6 +185,11 @@
       "type": "ValidationTextBox",
       "name": "DiagnosticDate",
       "caption": "Diagnose: Datum (JJJJ-MM-TT)"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "ManualDeleteTimestamp",
+      "caption": "Manuelle Freigabe: Uhrzeit HH:MM:SS (zum Diagnose-Datum)"
     }
   ],
   "actions": [
@@ -155,6 +197,12 @@
       "type": "Button",
       "caption": "Einzeltag-Diagnose (nur prüfen, keine Löschung)",
       "onClick": "echo AWD_DiagnoseDay($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Manuell bestätigten Ausreißer am Diagnose-Tag löschen",
+      "confirm": "Den angegebenen auffälligen Rohwert nach erneuter Prüfung UNWIDERRUFLICH löschen und die Variable reaggregieren? Vorher Archiv sichern!",
+      "onClick": "echo AWD_DeleteReviewedPoint($id);"
     },
     {
       "type": "Button",
@@ -185,7 +233,7 @@
     },
     {
       "type": "Label",
-      "caption": "Messwerte: Keine starre Zeitgrenze; bei mehr als 120 Minuten zwischen relevanten Rohwerten nur Vorschau/Diagnose, niemals automatische Löschung. Zähler: Zeitgrenze bleibt aktiv. Reaggregation ausschließlich nach tatsächlich gelöschten Werten."
+      "caption": "Vorschau und Diagnose verändern keine Daten. Bei Löschung wird die Reaggregation pro betroffener Variable angefordert. Große Datenlücken: nur gezielte manuelle Löschung mit Bestätigung."
     }
   ]
 }

@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.05 (Build 8). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.06 (Build 9). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -13,6 +13,8 @@ class ArchiveWatchdog extends IPSModule
         $this->RegisterPropertyInteger('TrainingDays', 14);
         $this->RegisterPropertyFloat('SafetyFactor', 3.0);
         $this->RegisterPropertyString('Targets', '[]');
+        $this->RegisterPropertyBoolean('AdvancedSettings', false);
+        $this->RegisterPropertyString('ManualDeleteTimestamp', '');
         $this->RegisterPropertyString('ArchiveStartDate', '2020-01-01');
         $this->RegisterPropertyInteger('MaxErrorSeries', 6);
         $this->RegisterAttributeString('LearnedProfiles', '{}');
@@ -33,6 +35,16 @@ class ArchiveWatchdog extends IPSModule
     public function GetConfigurationForm()
     {
         $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+        if (!$this->ReadPropertyBoolean('AdvancedSettings')) {
+            foreach ($form['elements'] as &$element) {
+                if (($element['name'] ?? '') === 'Targets') {
+                    $element['columns'] = array_values(array_filter($element['columns'], static function ($col) {
+                        return !in_array($col['name'], ['Spike', 'NeighborTolerance', 'MaxGapMinutes', 'UseManual'], true);
+                    }));
+                }
+            }
+            unset($element);
+        }
         $form['actions'][] = [
             'type' => 'ExpansionPanel', 'caption' => 'Letztes Prüfergebnis / Diagnose',
             'items' => [
@@ -77,6 +89,33 @@ class ArchiveWatchdog extends IPSModule
     {
         $value = json_decode($this->ReadAttributeString('LearnedProfiles'), true);
         return is_array($value) ? $value : [];
+    }
+
+    /** A single effective configuration is used by scan, day diagnosis and deletion. */
+    private function effectiveTarget(array $target, array $profile): array
+    {
+        $mode = (int) ($target['Mode'] ?? 0);
+        $sensitivity = max(0, min(2, (int) ($target['Sensitivity'] ?? 1)));
+        // Larger factor = more tolerant. Robust q95 is used instead of q99,
+        // since obvious outliers can contaminate the high percentiles.
+        $factors = [1.5, 3.0, 5.0];
+        $q95 = max(0.0, (float) ($profile['q95'] ?? 0.0));
+        if (!empty($target['UseManual'])) {
+            $target['Spike'] = max(0.001, (float) ($target['Spike'] ?? 3.0));
+            $target['NeighborTolerance'] = max(0.0, (float) ($target['NeighborTolerance'] ?? 1.0));
+            $target['_Factor'] = max(1.0, $this->ReadPropertyFloat('SafetyFactor'));
+        } elseif ($q95 > 0.0) {
+            $target['Spike'] = max($mode === 0 ? 0.5 : 0.001, $q95 * $factors[$sensitivity]);
+            $target['NeighborTolerance'] = max($mode === 0 ? 0.5 : 0.001, $q95 * ($sensitivity === 0 ? 1 : ($sensitivity === 1 ? 1.5 : 2.5)));
+            $target['_Factor'] = 1.0; // Already applied in Spike above.
+        } else {
+            // No learned profile: preserve the existing manual thresholds so
+            // that a new instance works without forcing a learning step.
+            $target['Spike'] = max(0.001, (float) ($target['Spike'] ?? 3.0));
+            $target['NeighborTolerance'] = max(0.0, (float) ($target['NeighborTolerance'] ?? 1.0));
+            $target['_Factor'] = 1.0;
+        }
+        return $target;
     }
 
     private function percentile(array $sorted, float $p): float
@@ -143,6 +182,7 @@ class ArchiveWatchdog extends IPSModule
             $lines[] = 'WARNUNG: Lernprofil für anderen Verlaufstyp. Bitte neu lernen.';
             $profile = [];
         }
+        $target = $this->effectiveTarget($target, $profile);
         $gap = $this->allowedGap($target, $profile);
         $pad = (int) ($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap) : max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
         try {
@@ -157,6 +197,7 @@ class ArchiveWatchdog extends IPSModule
             ? 'Messwert: keine harte Zeitgrenze für die Erkennung. Ab 120 min Abstand je Seite ausschließlich manuelle Prüfung (keine Löschung).'
             : 'Zähler: maximaler Zeitabstand ' . round($gap / 60, 1) . ' min.';
         $lines[] = 'Rohdaten inkl. Nachbarschaft: ' . count($rows) . '; erkannte Ausreißer an diesem Tag: ' . count($detected) . '.';
+        $lines[] = 'Aktive Schwellen: Sprung ' . round((float)$target['Spike'], 3) . ', Nachbar-Toleranz ' . round((float)$target['NeighborTolerance'], 3) . '.';
         $diag = [];
         foreach ($rows as $i => $row) {
             $ts = (int) $row['TimeStamp'];
@@ -197,6 +238,62 @@ class ArchiveWatchdog extends IPSModule
         $report = implode("\n", $lines);
         $this->saveReport($report, $diag);
         return $report;
+    }
+
+    /** Explicitly confirmed deletion of one REVIEW-ONLY candidate from the selected day.
+     * The point is re-detected from original raw data immediately before deletion.
+     */
+    public function DeleteReviewedPoint(): string
+    {
+        $id = $this->ReadPropertyInteger('DiagnosticVariableID');
+        $stamp = trim($this->ReadPropertyString('ManualDeleteTimestamp'));
+        $date = $this->ReadPropertyString('DiagnosticDate');
+        $archive = $this->archiveID();
+        if (!$archive || !IPS_VariableExists($id)) { return 'Ungültige Variable oder fehlendes Archiv.'; }
+        $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        $tsObj = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $date . ' ' . $stamp);
+        if (!$dt || !$tsObj || $tsObj->format('Y-m-d H:i:s') !== $date . ' ' . $stamp) {
+            return 'Bitte Diagnose-Datum und Uhrzeit im Format HH:MM:SS angeben.';
+        }
+        $ts = $tsObj->getTimestamp();
+        $start = $dt->getTimestamp();
+        if ($ts < $start || $ts >= $start + 86400) { return 'Zeit liegt außerhalb des Diagnosetags.'; }
+        $target = null;
+        foreach ($this->targets() as $t) {
+            if ((int) ($t['VariableID'] ?? 0) === $id) { $target = $t; break; }
+        }
+        if ($target === null || (isset($target['Enabled']) && !$target['Enabled'])) {
+            return 'Variable muss aktiv zur Überwachung hinzugefügt sein.';
+        }
+        $profile = $this->profiles()[(string)$id] ?? [];
+        if ($profile && (int)($profile['mode'] ?? -1) !== (int)($target['Mode'] ?? 0)) { $profile = []; }
+        $target = $this->effectiveTarget($target, $profile);
+        $gap = $this->allowedGap($target, $profile);
+        $pad = (int)($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap)
+            : max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
+        try {
+            $rows = AC_GetLoggedValues($archive, $id, max(1, $start - $pad), $start + 86399 + $pad, 10000);
+            if (count($rows) >= 10000) { return 'Zu viele Rohwerte; Löschung abgebrochen.'; }
+            usort($rows, static fn($a, $b) => (int)$a['TimeStamp'] <=> (int)$b['TimeStamp']);
+            $bad = $this->detect($rows, $target, $profile, $start, $start + 86399);
+            if (!isset($bad[(string)$ts]) || empty($bad[(string)$ts]['ReviewOnly'])) {
+                return 'Der Zeitstempel ist aktuell kein erkannter Kandidat mit manueller Freigabe. Nichts gelöscht.';
+            }
+            $removed = AC_DeleteVariableData($archive, $id, $ts, $ts);
+            if (!is_int($removed) || $removed < 1) { return 'Löschfunktion hat keine Datensätze entfernt.'; }
+            $remaining = AC_GetLoggedValues($archive, $id, max(1, $ts - 1), $ts + 1, 100);
+            $found = false;
+            foreach ($remaining as $row) { if ((int)($row['TimeStamp'] ?? -1) === $ts) { $found = true; break; } }
+            $requested = AC_ReAggregateVariable($archive, $id);
+            $report = 'Manuell bestätigte Löschung: ' . IPS_GetName($id) . ' (' . $id . ') ' . date('d.m.Y H:i:s', $ts)
+                . '; Datensätze laut Archiv-API entfernt: ' . $removed
+                . '; Rohwert noch vorhanden: ' . ($found ? 'JA – prüfen!' : 'nein')
+                . '; Reaggregation: ' . ($requested ? 'ANGEFORDERT (Abschluss nicht bestätigt)' : 'FEHLER beim Start');
+            $this->saveReport($report, [$this->detailRow($id, $bad[(string)$ts], $found ? 'WARNUNG: Rohwert vorhanden' : 'GELÖSCHT; Reaggregation angefordert')]);
+            return $report;
+        } catch (Throwable $e) {
+            return 'Manuelle Löschung fehlgeschlagen: ' . $e->getMessage();
+        }
     }
 
     /** Training is manual and never deletes anything. */
@@ -319,7 +416,7 @@ class ArchiveWatchdog extends IPSModule
         $manual = max(0.001, (float) ($target['Spike'] ?? 3));
         $typical = max(1.0, (float) ($profile['medianInterval'] ?? $dt));
         $scale = min(4.0, max(1.0, sqrt($dt / $typical)));
-        $factor = max(1.0, min(20.0, $this->ReadPropertyFloat('SafetyFactor')));
+        $factor = max(1.0, min(20.0, ($target['_Factor'] ?? $this->ReadPropertyFloat('SafetyFactor'))));
         return max($manual, (float) ($profile['q95'] ?? 0) * $factor * $scale);
     }
 
@@ -463,10 +560,14 @@ class ArchiveWatchdog extends IPSModule
                 continue;
             }
             $profile = $profiles[(string) $id] ?? [];
-            if (!$profile || (int) ($profile['mode'] ?? -1) !== (int) ($t['Mode'] ?? 0)) {
-                $lines[] = IPS_GetName($id) . ': kein passendes Lernprofil – übersprungen.';
-                continue;
+            if ($profile && (int) ($profile['mode'] ?? -1) !== (int) ($t['Mode'] ?? 0)) {
+                $lines[] = IPS_GetName($id) . ': Lernprofil passt nicht zum Verlauf; manuelle Fallback-Grenzen verwendet.';
+                $profile = [];
             }
+            if (!$profile) {
+                $lines[] = IPS_GetName($id) . ': kein gültiges Lernprofil; Prüfung mit gespeicherten Fallback-Grenzen.';
+            }
+            $t = $this->effectiveTarget($t, $profile);
             $gap = $this->allowedGap($t, $profile);
             $overlap = (int) ($t['Mode'] ?? 0) === 0
                 ? max(172800, $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2))
