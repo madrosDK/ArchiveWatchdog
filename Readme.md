@@ -2,7 +2,7 @@
 
 IP-Symcon-Modul zur Prüfung und gezielten Bereinigung auffälliger Archivwerte von Integer- und Float-Variablen. Unterstützt Messwerte, aufwärtszählende und abwärtszählende Zähler sowie das Erkennen kurzer Fehlerfolgen.
 
-**Version:** 0.3.03 · **Build:** 6
+**Version:** 0.3.05 · **Build:** 8
 
 ## Installation
 
@@ -35,3 +35,13 @@ Die neue Einzeltag-Diagnose liest die Rohdaten einer frei wählbaren Variablen m
 Der letzte Prüfbericht und eine Tabelle mit bis zu 300 erkannten Werten werden in Instanzattributen gespeichert und bleiben nach dem Schließen des Dialogs erhalten. Nach einem Löschlauf erscheint pro erfasstem Punkt der Löschstatus. Die Tabelle ist eine Diagnoseansicht und löscht selbst keine Daten. Bei einer erneuten Prüfung wird sie durch deren Ergebnis ersetzt.
 
 **Hinweis:** Änderungen an den Diagnose-Einstellungen zuerst mit „Übernehmen“ speichern, dann Diagnoseknopf ausführen. Einziger nachgewiesener Problemwert aus dem bisherigen Screenshot: 16.11.2026, 03:55:27, 0,0 °C. Eine erfolgreiche Löschung ist erst durch Nachlesen der Rohdaten bestätigt.
+
+## Zeitabstände ab v0.3.05
+
+Beim Verlaufstyp **Messwert** ist die zeitliche Lücke kein Ausschlusskriterium für die Ausreißererkennung mehr. Auch 70 Minuten oder mehrere Stunden auseinanderliegende Rohwerte werden untersucht. Für die Prüfung werden plausible Werte vor und nach einer Auffälligkeit sowie die erlernte bzw. eingestellte Abweichungsschwelle benötigt. Eine große Lücke allein macht einen Wert weder falsch noch richtig.
+
+**Sicherheitsregel:** Besteht bei einem erkannten Ausreißer eine Rohdatenlücke von mehr als 120 Minuten zur relevanten Nachbarschaft, wird er in Vorschau/Diagnose angezeigt, aber im Löschmodus übersprungen. Eine manuelle Prüfung im Originalarchiv ist erforderlich. Die Erkennung solcher Punkte ist möglich, ihre automatische Entfernung nicht. Die Scanabfrage holt für Messwerte bis zu mindestens 48 Stunden Kontext je Tagesabschnitt; bei extrem langen Lücken außerhalb des Kontextfensters ist eine Erkennung möglicherweise nicht möglich.
+
+Bei Zählern bleibt die Zeitgrenze `Max. Abstand (min)` aktiv. Die Einstellung `Lückenfaktor` entfällt in der Oberfläche und wird für Messwerte nicht mehr verwendet. Die Großzügigkeits-, Sprung- und Nachbar-Toleranzen bleiben veränderbar.
+
+**Reaggregation:** Einmal pro Variable ausschließlich nach erfolgreich gelöschten Archivdatensätzen; niemals nach Vorschau, Diagnose oder Lernen.

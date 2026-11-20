@@ -1,6 +1,6 @@
 # ArchiveWatchdog – Konfiguration
 
-Version 0.3.03 · Build 6
+Version 0.3.05 · Build 8
 
 ## Allgemeine Einstellungen
 
@@ -24,7 +24,7 @@ Version 0.3.03 · Build 6
 | Verlauf | `Messwert`, `Zähler aufwärts` oder `Zähler abwärts`; bestimmt die Lern- und Erkennungslogik. |
 | Min. Sprung | Untergrenze für einen als auffällig untersuchten Sprung, in der Einheit der Variable. |
 | Nachbar-Toleranz | Zulässige Abweichung zwischen Werten vor und nach einem vermuteten Ausreißer; die effektive Prüfung berücksichtigt zusätzlich erlernte Grenzen. |
-| Max. Abstand (min) | Maximaler zeitlicher Abstand, in dem Messpunkte für zusammenhängende Prüfung herangezogen werden. |
+| Max. Abstand (min, nur Zähler) | Maximale Zeitlücke zwischen Zähler-Rohwerten für eine zusammenhängende Prüfung. Bei Messwerten nicht aktiv. |
 | Aktiv | Schließt die Variable in Lernen und Prüfungen ein bzw. aus. |
 
 ## Aktionen und Datenänderung
@@ -63,3 +63,13 @@ Die Reaggregation wird **nicht für jeden einzelnen Messpunkt**, sondern nach s�
 | Erkannte und untersuchte Archivwerte | Bis zu 300 Rohwerte mit Zeitstempel, Wert, optionalen Nachbarwerten und Status (z. B. erkannt, nicht gelöscht, gelöscht, noch vorhanden). Wird bei nächster Prüfung ersetzt. |
 
 Änderungen in den Einstellungen vor dem Auslösen über **Übernehmen** speichern. Zur Untersuchung des bekannten Beispielwerts die Variable `38701` und den Tag `2026-11-16` wählen. Bei größerem Prüfzeitraum bleiben die bisherigen Aktionsknöpfe erhalten. Eine Reaggregation erfolgt **ausschließlich**, wenn ein Löschlauf mindestens einen Datensatz tatsächlich gelöscht hat; nicht bei Lernen, Vorschau oder Diagnose.
+
+## Zeitprüfung ab v0.3.05
+
+**Messwerte:** Kein starres Zeitlimit mehr für die Erkennung. Einzeltag-Diagnose und Prüfblöcke laden jeweils mindestens 48 Stunden Kontext, um vor/nach dem vermuteten Fehler plausible Nachbarn zu finden. Es wird nicht automatisch interpoliert oder ein fehlender Rohwert erzeugt. Maßgeblich sind Abweichungsschwelle, Nachbar-Toleranz und die maximale Zahl kurzer Fehlerwerte. Die vergangene Zeit kann die erlernte Abweichungsschwelle weiterhin moderat beeinflussen.
+
+**Sicherheit bei Datenlücken:** Wenn mehr als 120 Minuten zwischen einem verdächtigen Wert und dem relevanten Anker oder innerhalb der Fehlerfolge liegen, wird ein erkannter Punkt mit **NUR VORSCHAU: große Datenlücke** markiert. Der Löschlauf überspringt ihn; es erfolgt für diesen Punkt keine Löschung. Bei noch größeren Datenlücken außerhalb des geladenen Kontextfensters kann die Erkennung unvollständig sein.
+
+**Zähler:** `Max. Abstand (min)` bleibt eine strikte Bedingung für zeitlich plausible Zählerverläufe.
+
+`Lückenfaktor` ist kein konfigurierbarer Parameter mehr; vorhandene Einstellungen werden bei Updates nicht aktiv genutzt. Bei Vorschau, Diagnose und Lernen wird nie reaggregiert. Bei Löschen reaggregiert das Modul ausschließlich Variablen mit tatsächlich gelöschten Rohwerten.

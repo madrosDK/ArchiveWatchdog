@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.03 (Build 6): Tagesdiagnose, dauerhafter Ergebnisbericht und Löschstatus je erkanntem Rohwert."
+      "caption": "v0.3.05 (Build 8): Messwerte ohne harte Zeitgrenze; große Datenlücken nur Vorschau."
     },
     {
       "type": "CheckBox",
@@ -121,7 +121,7 @@
         },
         {
           "name": "MaxGapMinutes",
-          "caption": "Max. Abstand (min)",
+          "caption": "Max. Abstand (min, nur Zähler)",
           "width": "120px",
           "add": 30,
           "edit": {
@@ -185,7 +185,7 @@
     },
     {
       "type": "Label",
-      "caption": "Bei Löschung zählt das Modul die wirklich entfernten Datensätze und kontrolliert die Rohdaten. Reaggregation wird danach nur bei tatsächlicher Löschung gestartet und kann im IP-Symcon-Meldungsfenster einige Zeit laufen. Keine Reaggregation bei Vorschau oder Lernen."
+      "caption": "Messwerte: Keine starre Zeitgrenze; bei mehr als 120 Minuten zwischen relevanten Rohwerten nur Vorschau/Diagnose, niemals automatische Löschung. Zähler: Zeitgrenze bleibt aktiv. Reaggregation ausschließlich nach tatsächlich gelöschten Werten."
     }
   ]
 }

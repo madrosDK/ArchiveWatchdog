@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.03 (Build 6). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.05 (Build 8). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -143,8 +143,8 @@ class ArchiveWatchdog extends IPSModule
             $lines[] = 'WARNUNG: Lernprofil für anderen Verlaufstyp. Bitte neu lernen.';
             $profile = [];
         }
-        $gap = max(1, (int) ($target['MaxGapMinutes'] ?? 30)) * 60;
-        $pad = max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
+        $gap = $this->allowedGap($target, $profile);
+        $pad = (int) ($target['Mode'] ?? 0) === 0 ? max(172800, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap) : max(7200, ($this->ReadPropertyInteger('MaxErrorSeries') + 2) * $gap);
         try {
             $rows = AC_GetLoggedValues($archive, $id, max(1, $start - $pad), $end + $pad, 10000);
         } catch (Throwable $e) {
@@ -153,6 +153,9 @@ class ArchiveWatchdog extends IPSModule
         if (count($rows) >= 10000) { return 'Diagnose abgebrochen: Mehr als 9999 Werte im Abfragefenster. Kein vollständiger Datensatz.'; }
         usort($rows, static fn($a, $b) => (int) $a['TimeStamp'] <=> (int) $b['TimeStamp']);
         $detected = $this->detect($rows, $target, $profile, $start, $end);
+        $lines[] = $mode === 0
+            ? 'Messwert: keine harte Zeitgrenze für die Erkennung. Ab 120 min Abstand je Seite ausschließlich manuelle Prüfung (keine Löschung).'
+            : 'Zähler: maximaler Zeitabstand ' . round($gap / 60, 1) . ' min.';
         $lines[] = 'Rohdaten inkl. Nachbarschaft: ' . count($rows) . '; erkannte Ausreißer an diesem Tag: ' . count($detected) . '.';
         $diag = [];
         foreach ($rows as $i => $row) {
@@ -169,7 +172,7 @@ class ArchiveWatchdog extends IPSModule
             if (!isset($detected[(string)$ts]) && !$abnormal) { continue; }
             $neighbors = ($prev ? (string)$prev['Value'] : '–') . ' / ' . ($next ? (string)$next['Value'] : '–');
             if (isset($detected[(string)$ts])) {
-                $status = 'ERKANNT (nicht gelöscht)';
+                $status = !empty($detected[(string)$ts]['ReviewOnly']) ? 'ERKANNT – NUR VORSCHAU (große Datenlücke)' : 'ERKANNT (löschbar nach Bestätigung)';
             } elseif (!$prev || !$next) {
                 $status = 'NICHT ERKANNT: Nachbarwert fehlt';
             } else {
@@ -178,8 +181,8 @@ class ArchiveWatchdog extends IPSModule
                 $threshold = $this->threshold($target, $profile, min($dt1, $dt2));
                 $anchor = abs((float)$next['Value'] - (float)$prev['Value']);
                 $maxAnchor = max((float)($target['NeighborTolerance'] ?? 1), (float)($profile['q95'] ?? 0) * 1.5);
-                if ($dt1 > $gap || $dt2 > $gap) {
-                    $status = 'NICHT ERKANNT: Zeitabstand ' . max($dt1, $dt2) . ' s > ' . $gap . ' s';
+                if ($mode !== 0 && ($dt1 > $gap || $dt2 > $gap)) {
+                    $status = 'NICHT ERKANNT: Zähler-Zeitabstand ' . max($dt1, $dt2) . ' s > ' . $gap . ' s';
                 } elseif ($anchor > $maxAnchor) {
                     $status = 'NICHT ERKANNT: Nachbarn differieren ' . round($anchor, 2) . ' > ' . round($maxAnchor, 2);
                 } else {
@@ -289,6 +292,28 @@ class ArchiveWatchdog extends IPSModule
         return $report;
     }
 
+    /**
+     * Archiviert werden nur Wertänderungen; unveränderte Messungen erzeugen keine neuen Rohwerte.
+     * Bei Messwerten deshalb die zeitliche Lücke anhand des gelernten typischen Abstands
+     * vorsichtig erweitern. Zähler verwenden weiterhin den manuell konfigurierten Grenzwert.
+     */
+    private function allowedGap(array $target, array $profile): int
+    {
+        $manual = max(1, (int) ($target['MaxGapMinutes'] ?? 30)) * 60;
+        if ((int) ($target['Mode'] ?? 0) !== 0) {
+            return $manual;
+        }
+        $typical = (float) ($profile['medianInterval'] ?? 0);
+        if ($typical <= 0 || !is_finite($typical)) {
+            return $manual;
+        }
+        // Standard: bis zu acht typische Abstände, maximal zwei Stunden.
+        // Die Ankerwerte müssen weiterhin nahe beieinanderliegen; dies ist keine
+        // Freigabe für beliebige Ausreißer bei großen Datenlücken.
+        $multiplier = max(1, min(20, (int) ($target['GapMultiplier'] ?? 8)));
+        return max($manual, min(7200, (int) ceil($typical * $multiplier)));
+    }
+
     private function threshold(array $target, array $profile, int $dt): float
     {
         $manual = max(0.001, (float) ($target['Spike'] ?? 3));
@@ -304,7 +329,7 @@ class ArchiveWatchdog extends IPSModule
         $bad = [];
         $n = count($rows);
         $maxRun = max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries')));
-        $gap = max(1, (int) ($target['MaxGapMinutes'] ?? 30)) * 60;
+        $gap = $this->allowedGap($target, $profile);
         $tol = max(0.0, (float) ($target['NeighborTolerance'] ?? 1));
         $mode = (int) ($target['Mode'] ?? 0);
         for ($i = 1; $i < $n - 1; $i++) {
@@ -327,7 +352,7 @@ class ArchiveWatchdog extends IPSModule
                 for ($j = $i; $j <= $i + $length; $j++) {
                     $prevTs = (int) $rows[$j - 1]['TimeStamp'];
                     $currTs = (int) $rows[$j]['TimeStamp'];
-                    if ($currTs <= $prevTs || $currTs - $prevTs > $gap) {
+                    if ($currTs <= $prevTs || ($mode !== 0 && $currTs - $prevTs > $gap)) {
                         $ok = false;
                         break;
                     }
@@ -365,9 +390,25 @@ class ArchiveWatchdog extends IPSModule
                         $candidate = [];
                         break;
                     }
-                    $candidate[] = ['TimeStamp' => $ts, 'Value' => $v, 'Expected' => $expected, 'Threshold' => $threshold];
+                    // Long gaps are still detected for diagnosis, but never deleted automatically.
+                    // This is a safety classification, not an exclusion from recognition.
+                    $longGap = $mode === 0 && ($ts - $aTs > 7200 || $zTs - $ts > 7200);
+                    $candidate[] = ['TimeStamp' => $ts, 'Value' => $v, 'Expected' => $expected, 'Threshold' => $threshold, 'ReviewOnly' => $longGap];
                 }
                 if ($candidate) {
+                    if ($mode === 0) {
+                        $prevCandidateTs = $aTs;
+                        $review = false;
+                        for ($k = $i; $k <= $i + $length; $k++) {
+                            $candidateTs = (int) $rows[$k]['TimeStamp'];
+                            if ($candidateTs - $prevCandidateTs > 7200) { $review = true; }
+                            $prevCandidateTs = $candidateTs;
+                        }
+                        if ($review) {
+                            foreach ($candidate as &$candidateItem) { $candidateItem['ReviewOnly'] = true; }
+                            unset($candidateItem);
+                        }
+                    }
                     $best = $candidate;
                     break; // shortest conclusive burst, avoids swallowing good readings
                 }
@@ -426,8 +467,10 @@ class ArchiveWatchdog extends IPSModule
                 $lines[] = IPS_GetName($id) . ': kein passendes Lernprofil – übersprungen.';
                 continue;
             }
-            $gap = max(1, (int) ($t['MaxGapMinutes'] ?? 30)) * 60;
-            $overlap = $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2);
+            $gap = $this->allowedGap($t, $profile);
+            $overlap = (int) ($t['Mode'] ?? 0) === 0
+                ? max(172800, $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2))
+                : $gap * (max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries'))) + 2);
             $bad = [];
             $incomplete = false;
             $note = '';
@@ -459,10 +502,11 @@ class ArchiveWatchdog extends IPSModule
             ksort($bad, SORT_NUMERIC);
             $count = count($bad);
             $totalFound += $count;
-            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (auch kurze Fehlerfolgen).';
+            $reviewCount = count(array_filter($bad, static fn($item) => !empty($item['ReviewOnly'])));
+            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (davon ' . $reviewCount . ' mit großer Datenlücke nur zur manuellen Prüfung); ' . ((int)($t['Mode'] ?? 0) === 0 ? 'keine harte Zeitgrenze für Messwerte.' : 'Zähler-Maximalabstand ' . round($gap / 60, 1) . ' min.');
             foreach ($bad as $item) {
                 if (count($diagnosis) < 300) {
-                    $diagnosis[] = $this->detailRow($id, $item, $delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)');
+                    $diagnosis[] = $this->detailRow($id, $item, !empty($item['ReviewOnly']) ? 'NUR VORSCHAU: große Datenlücke' : ($delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)'));
                 }
             }
             $diagIndex = [];
@@ -478,7 +522,7 @@ class ArchiveWatchdog extends IPSModule
                     break;
                 }
                 $lines[] = '  ' . date('d.m.Y H:i:s', $item['TimeStamp']) . ': ' . $item['Value']
-                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')';
+                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')' . (!empty($item['ReviewOnly']) ? ' [NUR VORSCHAU: große Datenlücke]' : '');
             }
             if ($delete && $bad) {
                 $deleted = 0;
@@ -487,6 +531,7 @@ class ArchiveWatchdog extends IPSModule
                 $notFound = 0;
                 $remaining = 0;
                 foreach ($bad as $item) {
+                    if (!empty($item['ReviewOnly'])) { continue; }
                     $ts = (int) $item['TimeStamp'];
                     try {
                         // API returns an INTEGER count, not a boolean success status.
@@ -524,6 +569,7 @@ class ArchiveWatchdog extends IPSModule
                     }
                 }
                 $totalDeleted += $deleted;
+                $lines[] = '  Nur zur manuellen Prüfung (nicht gelöscht): ' . $reviewCount . '.';
                 $lines[] = '  Tatsächlich gelöschte Datensätze (API): ' . $deleted
                     . '; Löschaufrufe mit >0: ' . $successfulCalls
                     . '; keine Datensätze gefunden: ' . $notFound

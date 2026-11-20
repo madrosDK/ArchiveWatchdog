@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.05 · Build 8 (2026-11-20)
+
+### Geändert
+- Messwerte: Die starre Zeitgrenze und der adaptive Lückenfaktor verhindern keine Erkennung mehr. Die Archivwerte werden anhand der Nachbarwerte und der gelernten/manuellen Abweichungsgrenzen geprüft.
+- Große Datenlücken (>120 Minuten zwischen Anker und betroffenem Rohwert oder innerhalb einer Fehlerfolge) werden als auffällig erkannt, aber ausschließlich in Vorschau/Diagnose gezeigt und bei Löschläufen **nicht gelöscht**.
+- Zähler behalten die zeitabhängige Prüfung mit `MaxGapMinutes`.
+- `Lückenfaktor` aus der Konfigurationsoberfläche entfernt (bestehende gespeicherte Eigenschaft wird ignoriert). `Max. Abstand` ist als reine Zählereinstellung gekennzeichnet.
+- Vor- und Nachlauf beim Einzeltag- und Tagesblock-Scan für Messwerte erweitert (jeweils mindestens 48 Stunden), damit längere Archivlücken geprüft werden können. Weiterhin Abbruch ohne Löschung bei unvollständigen Abfragen.
+- Diagnose und Prüfergebnisse unterscheiden normal erkannte von wegen großer Datenlücke nur manuell zu prüfenden Ausreißern.
+
+### Unverändert
+- Keine automatische Korrektur dauerhafter Zähler-Resets. Reaggregation ausschließlich nach tatsächlich gelöschten Archivwerten, nie bei Vorschau, Diagnose oder Lernen.
+
+## 0.3.04 · Build 7 (2026-11-20)
+
+### Behoben
+- Messwert-Ausreißer wurden bei Rohwertlücken von mehr als 30 Minuten trotz plausibler Nachbarn ausgeschlossen. Die Zeitgrenze wird für Messwerte jetzt aus dem erlernten typischen Abstand und einem einstellbaren Lückenfaktor (Standard 8) adaptiv erweitert, maximal bis zu zwei Stunden.
+- Die Einzeltag-Diagnose zeigt die wirksame Zeitgrenze statt ausschließlich den manuellen Grenzwert.
+- Prüfberichte weisen den effektiven Messabstand je Variable aus.
+
+### Unverändert
+- Lernprofile, bestehende Einstellungen und Zählerbehandlung bleiben erhalten; automatische Löschung bleibt standardmäßig AUS.
+- Reaggregation nur nach tatsächlich gelöschten Archivwerten, niemals bei Vorschau, Diagnose oder Lernlauf.
+
+
 ## 0.3.03 · Build 6 (2026-11-20)
 
 ### Ergänzt
