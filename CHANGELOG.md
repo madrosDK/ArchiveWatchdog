@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.10 · Build 13 (2026-11-20)
+
+### Geändert
+- Messwerte bleiben ohne feste Zeitgrenze.
+- Zähler-Lernprofil um robuste Änderungsrate pro Stunde erweitert (größte 10 % ausgeklammert).
+- Zähler-Ausreißer werden unabhängig von großen Zeitabständen in der Vorschau sichtbar; bei Überschreitung des Zähler-Abstands ist zur Löschung eine separate Freigabe erforderlich.
+- Separate bestätigte Löschaktionen für Zählerkandidaten mit langen Datenlücken hinzugefügt; normale und automatische Löschungen bleiben restriktiv.
+- Dauerhafte Resets und Offsets werden weiterhin nicht gelöscht; Reaggregation erfolgt ausschließlich nach tatsächlicher Löschung.
+- Dokumentation und Versionsinformationen aktualisiert.
+
+
+## 0.3.09 · Build 12 (2026-11-20)
+
+### Geändert
+- Die pauschale 120-Minuten-Löschsperre für normale Messwerte entfernt. Erkannte Kandidaten mit großem Messabstand können nach gewöhnlicher Löschbestätigung wie andere Ausreißer gelöscht werden.
+- Zählerprüfung bleibt zeitabhängig; echte fortlaufende Veränderungen und Resets weiterhin geschützt.
+- Redundante zweite Gruppe „Vollständige Bereinigung mit manueller Freigabe“ aus der Oberfläche entfernt; normale Löschaktionen sind ausreichend.
+- Gezielte Einzelwertlöschung ist nach erneuter Ausreißerprüfung unabhängig vom früheren ReviewOnly-Flag möglich.
+- Vorschau und Diagnose bleiben schreibfrei. Nach positiver Löschung Reaggregation einmal pro betroffener Variable.
+- Versions- und Dokumentationsangaben synchronisiert; bestehende Konfigurationen bleiben erhalten.
+
+
 ## 0.3.08 · Build 11 (2026-11-20)
 
 ### Fehlerbehebung

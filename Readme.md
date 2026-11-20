@@ -1,4 +1,17 @@
-# ArchiveWatchdog
+## Änderungen v0.3.10 (Build 13)
+
+- Normale Messwerte haben weiterhin **keine zeitbedingte Löschsperre**.
+- Bei Zählern aufwärts/abwärts lernt das Modul zusätzlich die typische positive bzw. negative **Zähleränderung pro Stunde**, statt nur Messwertsprünge ungeachtet des zeitlichen Abstands zu vergleichen. Die oberen 10 % der Zählschritte fließen nicht in diesen robusten Richtwert ein.
+- **Nur kurzzeitige Ausreißer mit Rückkehr zum plausiblen Zählerstand** können automatisch als Löschkandidaten gelten. Bleibt ein Zähler nach einem großen Sprung auf neuem Niveau, ist das ein möglicher Reset, Offset oder realer Zählerwechsel und wird nicht automatisch bereinigt.
+- Große Abstände bei Zählern sind in der Vorschau sichtbar, bleiben aber bei normalen Löschaktionen gesperrt. Hierfür gibt es separate ausdrücklich zu bestätigende Freigabeaktionen.
+- Vorschau, Diagnose und Lernen sind schreibfrei; Reaggregation folgt nur auf tatsächlich gelöschte Daten.
+
+# ArchiveWatchdog – v0.3.10 (Build 13)
+
+**Wichtigste Änderung:** Bei normalen Messwerten (Verlauf `Messwert`) gibt es keine feste 120-Minuten-Sperre mehr. Ein erkannter Ausreißer darf nach Bestätigung des Löschbuttons unabhängig von der Zeitlücke gelöscht werden. Bei Zählern bleiben Zeitabstände Bestandteil der Plausibilitätsprüfung.
+
+**Sicherheit:** Die Einordnung basiert weiterhin auf plausiblen Nachbarwerten, erlernten/individuellen Grenzwerten und begrenzten Fehlerfolgen; sie ist nicht fehlerfrei. Lange Datenlücken können tatsächliche Zwischenereignisse verdecken. Vor Löschungen Archiv sichern und Vorschau prüfen. Reaggregation erfolgt ausschließlich nach tatsächlich gelöschten Datensätzen.
+
 
 IP-Symcon-Modul zur Prüfung und gezielten Bereinigung auffälliger Archivwerte von Integer- und Float-Variablen. Unterstützt Messwerte, aufwärtszählende und abwärtszählende Zähler sowie das Erkennen kurzer Fehlerfolgen.
 
@@ -67,6 +80,6 @@ Für aktive Variablen stehen **zwei Löscharten** bereit:
 
 Die Tabelle „Letztes Prüfergebnis / Diagnose“ führt erkannte Kandidaten und ihre Statusmeldungen (maximal 300 Einträge). Der Bericht nennt die Gesamtzahl, zurückgehaltene Kandidaten und tatsächlich gelöschte Datensätze. Die Funktion `AC_ReAggregateVariable` meldet die Anforderung der Neuberechnung, nicht deren Abschluss.
 
-## Korrektur in v0.3.08
+## Korrektur in v0.3.09
 
 Alle sechs Schaltflächen für Archivvorschau und Archivbereinigung übergeben die drei Methodenargumente `delete`, `wholeArchive` und `includeReview` jetzt ausdrücklich. Die von IP-Symcon generierte globale Wrapperfunktion `AWD_Scan()` verlangt vier Argumente einschließlich Instanz-ID, auch wenn die Modul-Methode Standardwerte besitzt. Die Korrektur verhindert den `ArgumentCountError` bei den bisherigen Drei-Argument-Aufrufen. Vorschau und sichere Löschung verwenden für `includeReview` ausdrücklich `false`; die bestätigte vollständige Bereinigung verwendet `true`. Archivdaten werden durch diesen Versionswechsel nicht verändert.

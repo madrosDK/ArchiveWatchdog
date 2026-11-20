@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.08 (Build 11). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.10 (Build 13). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -194,7 +194,7 @@ class ArchiveWatchdog extends IPSModule
         usort($rows, static fn($a, $b) => (int) $a['TimeStamp'] <=> (int) $b['TimeStamp']);
         $detected = $this->detect($rows, $target, $profile, $start, $end);
         $lines[] = $mode === 0
-            ? 'Messwert: keine harte Zeitgrenze für die Erkennung. Ab 120 min Abstand je Seite ausschließlich manuelle Prüfung (keine Löschung).'
+            ? 'Messwert: keine feste Zeitgrenze und keine zeitbasierte Löschsperre. Erkennung anhand plausibler Nachbarwerte.'
             : 'Zähler: maximaler Zeitabstand ' . round($gap / 60, 1) . ' min.';
         $lines[] = 'Rohdaten inkl. Nachbarschaft: ' . count($rows) . '; erkannte Ausreißer an diesem Tag: ' . count($detected) . '.';
         $lines[] = 'Aktive Schwellen: Sprung ' . round((float)$target['Spike'], 3) . ', Nachbar-Toleranz ' . round((float)$target['NeighborTolerance'], 3) . '.';
@@ -213,7 +213,7 @@ class ArchiveWatchdog extends IPSModule
             if (!isset($detected[(string)$ts]) && !$abnormal) { continue; }
             $neighbors = ($prev ? (string)$prev['Value'] : '–') . ' / ' . ($next ? (string)$next['Value'] : '–');
             if (isset($detected[(string)$ts])) {
-                $status = !empty($detected[(string)$ts]['ReviewOnly']) ? 'ERKANNT – NUR VORSCHAU (große Datenlücke)' : 'ERKANNT (löschbar nach Bestätigung)';
+                $status = 'ERKANNT (löschbar nach Bestätigung)';
             } elseif (!$prev || !$next) {
                 $status = 'NICHT ERKANNT: Nachbarwert fehlt';
             } else {
@@ -240,7 +240,7 @@ class ArchiveWatchdog extends IPSModule
         return $report;
     }
 
-    /** Explicitly confirmed deletion of one REVIEW-ONLY candidate from the selected day.
+    /** Explicitly confirmed deletion of one detected candidate from the selected day.
      * The point is re-detected from original raw data immediately before deletion.
      */
     public function DeleteReviewedPoint(): string
@@ -276,8 +276,8 @@ class ArchiveWatchdog extends IPSModule
             if (count($rows) >= 10000) { return 'Zu viele Rohwerte; Löschung abgebrochen.'; }
             usort($rows, static fn($a, $b) => (int)$a['TimeStamp'] <=> (int)$b['TimeStamp']);
             $bad = $this->detect($rows, $target, $profile, $start, $start + 86399);
-            if (!isset($bad[(string)$ts]) || empty($bad[(string)$ts]['ReviewOnly'])) {
-                return 'Der Zeitstempel ist aktuell kein erkannter Kandidat mit manueller Freigabe. Nichts gelöscht.';
+            if (!isset($bad[(string)$ts])) {
+                return 'Der Zeitstempel ist aktuell kein erkannter Ausreißer. Nichts gelöscht.';
             }
             $removed = AC_DeleteVariableData($archive, $id, $ts, $ts);
             if (!is_int($removed) || $removed < 1) { return 'Löschfunktion hat keine Datensätze entfernt.'; }
@@ -319,6 +319,7 @@ class ArchiveWatchdog extends IPSModule
             $mode = (int) ($t['Mode'] ?? 0);
             $gap = max(1, (int) ($t['MaxGapMinutes'] ?? 30)) * 60;
             $steps = [];
+            $rates = []; // monotonic counter progress per hour
             $intervals = [];
             $reversals = 0;
             $prev = null;
@@ -351,6 +352,9 @@ class ArchiveWatchdog extends IPSModule
                                 $reversals++;
                             } else {
                                 $steps[] = abs($diff);
+                                if ($mode !== 0) {
+                                    $rates[] = abs($diff) * 3600.0 / $dt;
+                                }
                                 $intervals[] = $dt;
                             }
                         }
@@ -367,11 +371,16 @@ class ArchiveWatchdog extends IPSModule
                 continue;
             }
             sort($steps, SORT_NUMERIC);
+            sort($rates, SORT_NUMERIC);
             sort($intervals, SORT_NUMERIC);
+            // Avoid learning the largest 10% of (potentially erroneous) positive counter jumps.
+            // q95 of the lower 90% is conservative, while an outlier cannot single-handedly inflate it.
+            $trimmedRates = $mode === 0 ? [] : array_slice($rates, 0, max(1, (int) floor(count($rates) * 0.9)));
             $p = [
                 'mode' => $mode,
                 'q95' => $this->percentile($steps, 0.95),
                 'q99' => $this->percentile($steps, 0.99),
+                'rate95PerHour' => count($trimmedRates) ? $this->percentile($trimmedRates, 0.95) : 0.0,
                 'medianInterval' => max(1.0, $this->percentile($intervals, 0.5)),
                 'steps' => count($steps),
                 'reversals' => $reversals,
@@ -417,6 +426,11 @@ class ArchiveWatchdog extends IPSModule
         $typical = max(1.0, (float) ($profile['medianInterval'] ?? $dt));
         $scale = min(4.0, max(1.0, sqrt($dt / $typical)));
         $factor = max(1.0, min(20.0, ($target['_Factor'] ?? $this->ReadPropertyFloat('SafetyFactor'))));
+        if ((int) ($target['Mode'] ?? 0) !== 0 && (float) ($profile['rate95PerHour'] ?? 0.0) > 0) {
+            // Real counter progress depends on elapsed time, not on how often a value was logged.
+            // Only transient deviations outside the anchor trend are deletion candidates.
+            return max($manual, (float) $profile['rate95PerHour'] * $dt / 3600.0 * $factor);
+        }
         return max($manual, (float) ($profile['q95'] ?? 0) * $factor * $scale);
     }
 
@@ -449,7 +463,7 @@ class ArchiveWatchdog extends IPSModule
                 for ($j = $i; $j <= $i + $length; $j++) {
                     $prevTs = (int) $rows[$j - 1]['TimeStamp'];
                     $currTs = (int) $rows[$j]['TimeStamp'];
-                    if ($currTs <= $prevTs || ($mode !== 0 && $currTs - $prevTs > $gap)) {
+                    if ($currTs <= $prevTs) {
                         $ok = false;
                         break;
                     }
@@ -487,25 +501,15 @@ class ArchiveWatchdog extends IPSModule
                         $candidate = [];
                         break;
                     }
-                    // Long gaps are still detected for diagnosis, but never deleted automatically.
-                    // This is a safety classification, not an exclusion from recognition.
-                    $longGap = $mode === 0 && ($ts - $aTs > 7200 || $zTs - $ts > 7200);
-                    $candidate[] = ['TimeStamp' => $ts, 'Value' => $v, 'Expected' => $expected, 'Threshold' => $threshold, 'ReviewOnly' => $longGap];
+                    // Messwerte: kein zeitbasiertes Löschverbot. Plausible Anker,
+                    // Abweichungsschwelle und begrenzte Fehlerfolge sind ausschlaggebend.
+                    // Zähler behalten ihre zeitbezogene Prüfung.
+                    // The maximum gap is a counter-only safety threshold for automatic deletion.
+                    // Long pauses do not hide the candidate from the preview, but need explicit review.
+                    $counterLongGap = $mode !== 0 && (($ts - $aTs > $gap) || ($zTs - $ts > $gap));
+                    $candidate[] = ['TimeStamp' => $ts, 'Value' => $v, 'Expected' => $expected, 'Threshold' => $threshold, 'ReviewOnly' => $counterLongGap];
                 }
                 if ($candidate) {
-                    if ($mode === 0) {
-                        $prevCandidateTs = $aTs;
-                        $review = false;
-                        for ($k = $i; $k <= $i + $length; $k++) {
-                            $candidateTs = (int) $rows[$k]['TimeStamp'];
-                            if ($candidateTs - $prevCandidateTs > 7200) { $review = true; }
-                            $prevCandidateTs = $candidateTs;
-                        }
-                        if ($review) {
-                            foreach ($candidate as &$candidateItem) { $candidateItem['ReviewOnly'] = true; }
-                            unset($candidateItem);
-                        }
-                    }
                     $best = $candidate;
                     break; // shortest conclusive burst, avoids swallowing good readings
                 }
@@ -542,11 +546,9 @@ class ArchiveWatchdog extends IPSModule
         if ($start >= $end) {
             return 'Startdatum liegt nach dem Prüfende.';
         }
-        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? ($includeReview ? 'BESTÄTIGTE VOLLSTÄNDIGE BEREINIGUNG' : 'SICHERE LÖSCHUNG') : 'VORSCHAU') . ')',
+        $lines = ['Archiv-Watchdog ' . date('d.m.Y H:i:s') . ' (' . ($delete ? 'BESTÄTIGTE BEREINIGUNG' : 'VORSCHAU') . ')',
             'Prüfbereich: ' . date('d.m.Y H:i', $start) . ' bis ' . date('d.m.Y H:i', $end) . '.',
-            $delete ? ($includeReview
-                ? 'EXPLIZITE FREIGABE: Auch markierte Ausreißer mit großer Datenlücke werden nach erneuter Prüfung gelöscht.'
-                : 'Sichere Löschung: Bei großen Datenlücken werden Kandidaten zurückgehalten.')
+            $delete ? 'Bestätigte Bereinigung: Nur anhand des Messverlaufs erkannte Ausreißer werden gelöscht; der Zeitabstand allein sperrt Messwerte nicht.'
                 : 'Vorschau: keine Löschung, keine Reaggregation.'];
         $totalFound = 0;
         $totalDeleted = 0;
@@ -611,12 +613,12 @@ class ArchiveWatchdog extends IPSModule
             $totalFound += $count;
             $reviewCount = count(array_filter($bad, static fn($item) => !empty($item['ReviewOnly'])));
             $totalReview += $reviewCount;
-            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer (davon ' . $reviewCount . ' mit großer Datenlücke nur zur manuellen Prüfung); ' . ((int)($t['Mode'] ?? 0) === 0 ? 'keine harte Zeitgrenze für Messwerte.' : 'Zähler-Maximalabstand ' . round($gap / 60, 1) . ' min.');
+            $lines[] = IPS_GetName($id) . ' (' . $id . '): ' . $count . ' erkannte Ausreißer; ' . ((int)($t['Mode'] ?? 0) === 0 ? 'keine harte Zeitgrenze für Messwerte.' : 'Zähler-Maximalabstand ' . round($gap / 60, 1) . ' min.');
             foreach ($bad as $item) {
                 if (count($diagnosis) < 300) {
                     $diagnosis[] = $this->detailRow($id, $item,
                         !empty($item['ReviewOnly'])
-                            ? ($delete && $includeReview ? 'FREIGEGEBEN: große Datenlücke; Löschung folgt' : 'MANUELLE FREIGABE NÖTIG: große Datenlücke')
+                            ? ($delete && $includeReview ? 'FREIGEGEBEN: Zähler-Zeitlücke; Löschung folgt' : 'ZÄHLER: Freigabe nötig bei großer Zeitlücke')
                             : ($delete ? 'ERKANNT – Löschung folgt' : 'ERKANNT (Vorschau)'));
                 }
             }
@@ -633,7 +635,7 @@ class ArchiveWatchdog extends IPSModule
                     break;
                 }
                 $lines[] = '  ' . date('d.m.Y H:i:s', $item['TimeStamp']) . ': ' . $item['Value']
-                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')' . (!empty($item['ReviewOnly']) ? ' [NUR VORSCHAU: große Datenlücke]' : '');
+                    . ' (erwartet ca. ' . round($item['Expected'], 3) . ', Schwelle ' . round($item['Threshold'], 3) . ')';
             }
             if ($delete && $bad) {
                 $deleted = 0;
@@ -685,8 +687,7 @@ class ArchiveWatchdog extends IPSModule
                     }
                 }
                 $totalDeleted += $deleted;
-                $lines[] = '  Wegen großer Datenlücken markiert: ' . $reviewCount
-                    . ($includeReview ? ' (ausdrücklich für Löschung freigegeben).' : ' (in sicherem Löschmodus übersprungen).');
+                $lines[] = '  Messwerte: keine zeitbedingte Löschsperre; Zähler: Freigabe bei großen Zeitlücken.';
                 $lines[] = '  Tatsächlich gelöschte Datensätze (API): ' . $deleted
                     . '; Löschaufrufe mit >0: ' . $successfulCalls
                     . '; keine Datensätze gefunden: ' . $notFound
@@ -713,15 +714,12 @@ class ArchiveWatchdog extends IPSModule
                 }
             }
         }
-        $lines[] = 'Gesamt erkannt: ' . $totalFound . '; davon wegen großer Datenlücken markiert: ' . $totalReview . '.';
+        $lines[] = 'Gesamt erkannt: ' . $totalFound . '.';
         if ($delete) {
             $lines[] = 'Tatsächlich gelöschte Datensätze (Archiv-API): ' . $totalDeleted
                 . '; mangels Freigabe übersprungen: ' . $totalSkipped . '.';
-            if (!$includeReview && $totalSkipped > 0) {
-                $lines[] = 'Für diese markierten Kandidaten den separaten Knopf „Vollständige Bereinigung MIT manueller Freigabe“ verwenden (vorher Vorschau und Archiv-Sicherung).';
-            }
         }
-        $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt.';
+        $lines[] = 'Dauerhafte Zähler-Resets/Offsets werden nicht automatisch bereinigt. Zählerprüfung verwendet erlernte Änderung pro Stunde, sofern vorhanden.';
         $report = implode("\n", $lines);
         $this->saveReport($report, $diagnosis);
         return $report;

@@ -1,3 +1,24 @@
+## Verhalten v0.3.10
+
+**Messwert:** Keine feste Zeitbegrenzung in Erkennung und Löschung. Gültige Vergleichswerte links/rechts und eine ausreichend große Abweichung bleiben notwendig.
+
+**Zähler aufwärts/abwärts:** Die Lernfunktion berechnet jetzt zusätzlich die typische Änderungsrate pro Stunde aus richtungskonformen Archivschritten, wobei die obersten 10 % der Raten für den Lernwert abgeschnitten werden. Ein Sprung wird nur als automatischer Löschkandidat betrachtet, wenn der Zählerstand wieder zu einer plausiblen fortlaufenden Linie zurückkehrt. Größere Zeitabstände als „Max. Abstand“ kennzeichnen Kandidaten zur gesonderten manuellen Freigabe. Ein dauerhaft neuer Zählerstand wird bewusst nicht automatisch in alte Werte umgerechnet; hierzu ist eine separat entwickelte Offset-/Resetfunktion nötig.
+
+**Optionen „Zähler-Ausreißer mit großen Zeitlücken freigeben“:** Löschen nach ausdrücklicher Bestätigung auch markierte Zählerkandidaten. Keine Freigabe im automatischen Timer. Vorher Sicherung und Vorschau empfohlen.
+
+**Reaggregation:** Ein Aufruf je Variable nach mindestens einer tatsächlich erfolgreichen Löschung. Nicht bei Diagnose, Vorschau oder Lernen.
+
+# Konfigurationsänderung v0.3.09
+
+- **Messwert:** Der Zeitabstand beeinflusst die Analyse unterstützend, verhindert aber weder die Erkennung noch die ausdrücklich bestätigte Löschung. Die frühere 120-Minuten-Schutzsperre entfällt.
+- **Zähler aufwärts/abwärts:** Die Einstellung „Max. Abstand (min, nur Zähler)“ bleibt wirksam; Zählerresets werden nicht automatisch korrigiert.
+- **Vorschau / Diagnose / Lernen:** Keine Archivänderung, keine Reaggregation.
+- **Ausreißer löschen:** Nach Bestätigung werden ausschließlich erkannte Kandidaten gelöscht; nach mindestens einem erfolgreich gelöschten Datensatz wird die Reaggregation **einmal pro Variable angefordert**, nicht als abgeschlossen gemeldet.
+- **Einzelwert löschen:** Der Diagnosetag, die Variable und die Uhrzeit erlauben weiterhin eine ausdrücklich bestätigte, erneute Prüfung und anschließende gezielte Löschung.
+- Zwei redundant gewordene Aktionen „Vollständige Bereinigung MIT manueller Freigabe“ sind aus der Oberfläche entfernt. Bestehende Eigenschaften und Lernprofile bleiben erhalten.
+
+**Hinweis:** Der unten stehende historische Dokumentationsverlauf beschreibt teilweise das frühere Sicherheitsverhalten bis v0.3.08. Für v0.3.09 gelten die vorstehenden Regeln.
+
 # ArchiveWatchdog – Konfiguration
 
 Version 0.3.08 · Build 11

@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.08 (Build 11): bestätigte vollständige Bereinigung inklusive markierter Datenlücken; Vorschau/Tabelle und sichere Automatik bleiben erhalten."
+      "caption": "v0.3.10 (Build 13): Messwerte ohne Zeitlimit; Zähler mit gelerntem Änderungswert pro Stunde und sicherer Prüfung."
     },
     {
       "type": "CheckBox",
@@ -221,31 +221,31 @@
     },
     {
       "type": "Button",
-      "caption": "Sichere Bereinigung: Prüfzeitraum (große Datenlücken auslassen)",
+      "caption": "Ausreißer löschen – Prüfzeitraum (sicher, mit Bestätigung)",
       "confirm": "WIRKLICH alle erkannten Ausreißer des Prüfzeitraums unwiderruflich aus den Archiven der aktiven Variablen löschen? Archiv vorher sichern!",
       "onClick": "echo AWD_Scan($id, true, false, false);"
     },
     {
       "type": "Button",
-      "caption": "Sichere Bereinigung: Archiv ab Startdatum (große Datenlücken auslassen)",
+      "caption": "Ausreißer löschen – Archiv ab Startdatum (sicher, mit Bestätigung)",
       "confirm": "ACHTUNG: ALLE erkannten Ausreißer seit dem eingestellten Startdatum aus den Archiven ALLER aktiven Variablen löschen? Vorher vollständige Sicherung anlegen!",
       "onClick": "echo AWD_Scan($id, true, true, false);"
     },
     {
       "type": "Button",
-      "caption": "Vollständige Bereinigung MIT manueller Freigabe – Prüfzeitraum",
-      "confirm": "UNWIDERRUFLICH: Auch die wegen großer Zeitlücken markierten Ausreißer aller aktiven Variablen im Prüfzeitraum löschen? Eine lange Datenlücke kann echte Änderungen verbergen. Vorher Vorschau kontrollieren und ARCHIV SICHERN!",
+      "caption": "Zähler-Ausreißer mit großen Zeitlücken freigeben – Prüfzeitraum",
+      "confirm": "ACHTUNG: Auch erkannte Zähler-Ausreißer mit großen Zeitabständen nach manueller Freigabe löschen? Echte Zählerwechsel/Resets dürfen nicht gelöscht werden. Archiv zuerst sichern!",
       "onClick": "echo AWD_Scan($id, true, false, true);"
     },
     {
       "type": "Button",
-      "caption": "Vollständige Bereinigung MIT manueller Freigabe – Archiv ab Startdatum",
-      "confirm": "UNWIDERRUFLICH: Auch ALLE wegen großer Zeitlücken markierten Ausreißer im GESAMTEN Zeitraum ab Archiv-Startdatum für ALLE aktiven Variablen löschen? Fehlklassifikationen sind möglich! Vorher Vorschau kontrollieren und ARCHIV SICHERN!",
+      "caption": "Zähler-Ausreißer mit großen Zeitlücken freigeben – Archiv ab Startdatum",
+      "confirm": "ACHTUNG: Auch erkannte Zähler-Ausreißer mit großen Zeitabständen im gesamten gewählten Archivzeitraum löschen? Nur nach Kontrolle der Vorschau und Archivsicherung!",
       "onClick": "echo AWD_Scan($id, true, true, true);"
     },
     {
       "type": "Label",
-      "caption": "Vorschau, Diagnose und Lernen: niemals löschen oder reaggregieren. Sichere Bereinigung überspringt große Datenlücken. Nur die separat bestätigte vollständige Bereinigung darf diese Kandidaten ebenfalls löschen. Reaggregation nach tatsächlicher Löschung einmal je Variable."
+      "caption": "Normale Messwerte: keine zeitbedingte Sperre. Zähler: zeitabhängige Änderung, lange Pausen werden zur Freigabe markiert. Dauerhafte Zählerresets werden NICHT automatisch korrigiert. Reaggregation ausschließlich nach erfolgreichen Löschungen."
     }
   ]
 }
