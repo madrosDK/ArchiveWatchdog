@@ -1,5 +1,5 @@
 <?php
-/** ArchiveWatchdog v0.3.11 (Build 14). Archive analysis only; never overwrites live variable values. */
+/** ArchiveWatchdog v0.3.12 (Build 15). Archive analysis only; never overwrites live variable values. */
 class ArchiveWatchdog extends IPSModule
 {
     public function Create()
@@ -213,7 +213,7 @@ class ArchiveWatchdog extends IPSModule
             if (!isset($detected[(string)$ts]) && !$abnormal) { continue; }
             $neighbors = ($prev ? (string)$prev['Value'] : '–') . ' / ' . ($next ? (string)$next['Value'] : '–');
             if (isset($detected[(string)$ts])) {
-                $status = 'ERKANNT: ' . ($detected[(string)$ts]['Reason'] ?? (!empty($detected[(string)$ts]['ReviewOnly']) ? 'manuelle Freigabe erforderlich' : 'löschbar nach Bestätigung'));
+                $status = 'ERKANNT: ' . ($detected[(string)$ts]['Reason'] ?? (!empty($detected[(string)$ts]['ReviewOnly']) ? 'manuelle Freigabe erforderlich' : 'löschbar nach Bestätigung')) . (!empty($detected[(string)$ts]['ReviewOnly']) ? ' [manuelle Freigabe]' : '');
             } elseif (!$prev || !$next) {
                 $status = 'NICHT ERKANNT: Nachbarwert fehlt';
             } else {
@@ -547,6 +547,64 @@ class ArchiveWatchdog extends IPSModule
         return $result;
     }
 
+    /**
+     * Transiente Zähleraussetzer werden getrennt von der allgemeinen
+     * Sprung-/Ratenlogik erkannt. Ein Nullwert zwischen zwei hohen,
+     * vergleichbaren Zählerständen ist kein Zählerreset. Ein echter Reset
+     * wird NICHT klassifiziert, wenn nach dem Nullwert nicht zum alten
+     * Niveau zurückgekehrt wird.
+     *
+     * Gilt für auf- und abwärtszählende Zähler, nicht für Messwerte.
+     */
+    private function detectCounterDropouts(array $rows, array $target, array $profile, int $start, int $end): array
+    {
+        if ((int)($target['Mode'] ?? 0) === 0 || !empty($target['AllowCounterZero'])) {
+            return [];
+        }
+        $result = [];
+        $n = count($rows);
+        $gap = $this->allowedGap($target, $profile);
+        $maxRun = max(1, min(20, $this->ReadPropertyInteger('MaxErrorSeries')));
+        for ($i = 1; $i < $n - 1; $i++) {
+            if (abs((float)$rows[$i]['Value']) > 0.0000001) { continue; }
+            $first = $i;
+            while ($i + 1 < $n && abs((float)$rows[$i + 1]['Value']) <= 0.0000001) { $i++; }
+            $last = $i;
+            if ($last - $first + 1 > $maxRun || $first < 1 || $last + 1 >= $n) { continue; }
+            $before = $rows[$first - 1];
+            $after = $rows[$last + 1];
+            $a = (float)$before['Value'];
+            $z = (float)$after['Value'];
+            $aTs = (int)$before['TimeStamp'];
+            $zTs = (int)$after['TimeStamp'];
+            if (!is_finite($a) || !is_finite($z) || $aTs >= $zTs || $a <= 0 || $z <= 0) { continue; }
+            // Nur eindeutig zurückgekehrte Aussetzer. Der Anker darf sich
+            // zwischen zwei Messungen real verändert haben, auch entgegen
+            // der Zählrichtung in geringem Umfang (Archiv-Messfehler).
+            $span = $zTs - $aTs;
+            $rate = max(0.0, (float)($profile['rate95PerHour'] ?? 0));
+            $tolerance = max(1.0, min($a, $z) * 0.005, $rate * $span / 3600.0 * 4.0);
+            if (abs($z - $a) > $tolerance) { continue; }
+            // Zählerstände müssen deutlich oberhalb der Null liegen.
+            // Das verhindert die Verwechslung mit einer Erstinbetriebnahme.
+            if (min($a, $z) < 10.0 * max(1.0, $tolerance)) { continue; }
+            for ($j = $first; $j <= $last; $j++) {
+                $ts = (int)$rows[$j]['TimeStamp'];
+                if ($ts < $start || $ts > $end) { continue; }
+                $longGap = ($ts - $aTs > $gap) || ($zTs - $ts > $gap);
+                $result[(string)$ts] = [
+                    'TimeStamp' => $ts,
+                    'Value' => 0.0,
+                    'Expected' => $a + ($z - $a) * ($ts - $aTs) / $span,
+                    'Threshold' => $tolerance,
+                    'ReviewOnly' => $longGap,
+                    'Reason' => 'Zähler-Nullaussetzer mit Rückkehr zum vorherigen Niveau'
+                ];
+            }
+        }
+        return $result;
+    }
+
     /** Detect a short wrong-valued run surrounded by plausible anchors. */
     private function detect(array $rows, array $target, array $profile, int $start, int $end): array
     {
@@ -634,11 +692,15 @@ class ArchiveWatchdog extends IPSModule
                 $i += count($best) - 1;
             }
         }
-        // Zusätzliche Störphasen-Erkennung, unabhängig von MaxErrorSeries.
+        // Zusätzliche Erkennung unabhängig vom gewöhnlichen Nachbarvergleich.
         if ($mode !== 0) {
             foreach ($this->detectCounterEpisodes($rows, $target, $profile, $start, $end) as $key => $item) {
-                // Ein mehrpunktiger Störabschnitt hat Vorrang vor Einzelwert-Freigaben.
                 $bad[$key] = $item;
+            }
+            // Eindeutige Nullaussetzer auch bei leicht abweichenden Ankern
+            // erkennen; ein vorhandener Störphasen-Kandidat bleibt erhalten.
+            foreach ($this->detectCounterDropouts($rows, $target, $profile, $start, $end) as $key => $item) {
+                if (!isset($bad[$key]) || empty($item['ReviewOnly'])) { $bad[$key] = $item; }
             }
         }
         return $bad;

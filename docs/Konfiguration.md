@@ -133,3 +133,10 @@ Bei allen sechs Archivscan-Aktionen werden Instanz-ID und die drei Parameter der
 ## Zähler-Störphasen
 
 Zusätzlich zu einzelnen kurzzeitigen Messfehlern sucht der Watchdog nach längeren Folgen großer Rück- und Vorwärtssprünge (max. 48 h zwischen erstem und letztem Sprung, Ankerfenster bis 72 h). Erforderlich sind mindestens drei plausible Fortschritte vor und nach der Störung sowie ein insgesamt plausibler Stand am Ende. Die Ausreißer werden gegen eine linear interpolierte Ankerlinie mit großzügigem Abstandskorridor geprüft. Die Erkennung nutzt eine robuste Normalrate aus den kleineren Zählerschritten, um falsche Spitzen nicht als normal anzulernen. Bei längeren Störphasen kann es Mehrdeutigkeiten geben; sie sind deshalb als **manuelle Prüfung nötig** gekennzeichnet und werden durch AutoDelete oder gewöhnliche sichere Löschung übersprungen. Nur gesondert bestätigte Löschaktionen können sie entfernen. Die Reaggregation erfolgt nach erfolgreicher Löschung einmal je Variable. Nicht alle echten Fehlerphasen sind automatisch eindeutig rekonstruierbar; bei dauerhaftem Zähleroffset bleibt manuelle Korrektur nötig.
+
+
+## Zähler-Nullaussetzer (v0.3.12)
+
+Bei `Zähler aufwärts` bzw. `Zähler abwärts` prüft der Watchdog zusätzlich Nullmesswerte (auch kurze Nullfolgen). **Erkennung:** Der Zähler lag vor der Nullphase deutlich über Null und kehrt danach auf ein vergleichbares Niveau zurück. Ein geringfügiger Unterschied zwischen den beiden positiven Ankern darf auftreten, selbst wenn er die übliche Nachbar-Toleranz übersteigt. Die Zusatzregel ist unabhängig von einem fehleranfälligen q95-Lernwert. Längere Datenlücken bleiben prüfpflichtig; dauerhafte Resets ohne Rückkehr werden nicht erkannt.
+
+`Zähler-Nullwerte zulassen` (Standard **aus**) deaktiviert die Sonderregel für einzelne Variablen, deren Zählerstände tatsächlich Null sein dürfen. Für normale `Messwert`-Variablen ist die Option wirkungslos. Ein erkannter Nullaussetzer wird wie jeder andere Kandidat in der Vorschau angezeigt und nur durch einen ausdrücklichen Löschlauf entfernt. Nach bestätigter Löschung: Reaggregation einmal je betroffener Variable.

@@ -1,4 +1,4 @@
-## Änderungen v0.3.11 (Build 14)
+## Änderungen v0.3.12 (Build 15)
 
 - Normale Messwerte haben weiterhin **keine zeitbedingte Löschsperre**.
 - Bei Zählern aufwärts/abwärts lernt das Modul zusätzlich die typische positive bzw. negative **Zähleränderung pro Stunde**, statt nur Messwertsprünge ungeachtet des zeitlichen Abstands zu vergleichen. Die oberen 10 % der Zählschritte fließen nicht in diesen robusten Richtwert ein.
@@ -6,7 +6,7 @@
 - Große Abstände bei Zählern sind in der Vorschau sichtbar, bleiben aber bei normalen Löschaktionen gesperrt. Hierfür gibt es separate ausdrücklich zu bestätigende Freigabeaktionen.
 - Vorschau, Diagnose und Lernen sind schreibfrei; Reaggregation folgt nur auf tatsächlich gelöschte Daten.
 
-# ArchiveWatchdog – v0.3.11 (Build 14)
+# ArchiveWatchdog – v0.3.12 (Build 15)
 
 **Wichtigste Änderung:** Bei normalen Messwerten (Verlauf `Messwert`) gibt es keine feste 120-Minuten-Sperre mehr. Ein erkannter Ausreißer darf nach Bestätigung des Löschbuttons unabhängig von der Zeitlücke gelöscht werden. Bei Zählern bleiben Zeitabstände Bestandteil der Plausibilitätsprüfung.
 
@@ -85,6 +85,14 @@ Die Tabelle „Letztes Prüfergebnis / Diagnose“ führt erkannte Kandidaten un
 Alle sechs Schaltflächen für Archivvorschau und Archivbereinigung übergeben die drei Methodenargumente `delete`, `wholeArchive` und `includeReview` jetzt ausdrücklich. Die von IP-Symcon generierte globale Wrapperfunktion `AWD_Scan()` verlangt vier Argumente einschließlich Instanz-ID, auch wenn die Modul-Methode Standardwerte besitzt. Die Korrektur verhindert den `ArgumentCountError` bei den bisherigen Drei-Argument-Aufrufen. Vorschau und sichere Löschung verwenden für `includeReview` ausdrücklich `false`; die bestätigte vollständige Bereinigung verwendet `true`. Archivdaten werden durch diesen Versionswechsel nicht verändert.
 
 
-## Mehrstündige Zähler-Störphasen (v0.3.11)
+## Mehrstündige Zähler-Störphasen (v0.3.12)
 
 Der Watchdog prüft für aufwärts-/abwärtszählende Variablen zusätzlich Folgen wiederholter extremer Vor- und Rücksprünge. Hierfür müssen vor und nach der Störung mehrere unauffällige Werte eine plausible Fortsetzung des Zählerverlaufs bilden. Fehlerhafte Einzelwerte innerhalb einer längeren Störung werden als Kandidaten markiert; die gesamte Episode wird nicht als echter Zählerreset behandelt, sofern der Zähler auf den plausiblen Stand zurückkehrt. Mehrpunktige Störungen werden **nicht automatisch gelöscht**: Prüfen und explizit freigeben, nach vorheriger Archivsicherung. Eine dauerhafte Niveauverschiebung wird nicht automatisch korrigiert.
+
+## Neu in v0.3.12 – Nullaussetzer bei Zählern
+
+Ein vorwärts-/rückwärtszählender Archivzähler kann kurzzeitig 0 melden und danach zum bisherigen Stand zurückkehren. Diese **transienten Nullaussetzer** erkennt das Modul jetzt unabhängig von der eng eingestellten Nachbar-Toleranz und von möglicherweise kontaminierten Lernschwellen. Dabei muss vor und nach der Nullphase ein deutlich positiver und ausreichend ähnlicher Zählerstand vorhanden sein. Ein echter Neustart bei Null ohne Rückkehr auf den ursprünglichen Stand wird ausdrücklich nicht automatisch entfernt. Auch zusammenhängende Nullphasen bis zur eingestellten maximalen Fehlerfolgenlänge werden erfasst.
+
+**Pro Variable:** Der neue Schalter `Zähler-Nullwerte zulassen` ist standardmäßig ausgeschaltet. Wird er aktiviert, ist die besondere Nullaussetzer-Erkennung für diese Variable deaktiviert. Bei längeren Zähler-Datenlücken bleiben Kandidaten zur manuellen Prüfung markiert. Vorschau/Diagnose löschen nie; Löschaktionen reaggregieren nur bei tatsächlich entfernten Archivwerten.
+
+Beispiel vom 21.04.2026: `64807,5 → 0,0 → 64805,0` wird als plausibel zurückgekehrter Nullaussetzer erkannt, obwohl die gewöhnliche Nachbar-Toleranz 0,15 nicht ausreicht.

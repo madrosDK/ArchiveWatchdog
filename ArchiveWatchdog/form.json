@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "v0.3.11 (Build 14): mehrstündige Zähler-Störphasen mit wechselnden Sprüngen erkennen; mehrpunktige Störungen nur mit manueller Freigabe löschen."
+      "caption": "v0.3.12 (Build 15): Zähler-Nullaussetzer auch bei leicht abweichenden Nachbarwerten erkennen; echte Resets schützen."
     },
     {
       "type": "CheckBox",
@@ -102,6 +102,15 @@
                 "value": 2
               }
             ]
+          }
+        },
+        {
+          "name": "AllowCounterZero",
+          "caption": "Zähler-Nullwerte zulassen",
+          "width": "130px",
+          "add": false,
+          "edit": {
+            "type": "CheckBox"
           }
         },
         {

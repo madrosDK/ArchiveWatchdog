@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.12 · Build 15 (2026-11-25)
+
+### Korrigiert
+- Vorübergehende Nullwerte in fortlaufenden Zählern anhand positiver Vorher-/Nachher-Anker unabhängig von der engen Nachbar-Toleranz erkennen.
+- Kleine Differenzen zwischen den Anker-Zählerständen anhand einer zusätzlichen großzügigen, aber begrenzten Korridorprüfung zulassen.
+- Wiederkehrende Nullfolgen bis zur maximalen Fehlerfolgenlänge unterstützen und die Erkennungsursache in der Diagnose anzeigen.
+- Echte Zählerresets ohne Rückkehr auf das vorherige Niveau weiterhin nicht automatisch löschen.
+- Option `Zähler-Nullwerte zulassen` pro Variable zum Deaktivieren dieser Sonderregel.
+- Vorschau bleibt schreibfrei, Reaggregation erfolgt weiterhin ausschließlich nach tatsächlichen Löschungen.
+
+
 ## 0.3.11 · Build 14 (2026-11-20)
 
 ### Verbessert
